@@ -63,6 +63,9 @@ export default function WorldMap({
     y: number;
   } | null>(null);
 
+  // Track double tap / mobile hover state
+  const [mobileHoveredId, setMobileHoveredId] = useState<string | null>(null);
+
   // Calculate contact counts by country ID (padded)
   const contactCounts = contacts.reduce<Record<string, number>>((acc, c) => {
     const padded = c.countryId.padStart(3, '0');
@@ -138,7 +141,7 @@ export default function WorldMap({
     }
 
     if (count === 0) {
-      return '#f1f5f9'; // Clean light slate (unrecorded)
+      return '#efe5d3'; // Elegant clear light beige for countries without friends
     }
 
     return getNiceDefaultColorForCountry(paddedId);
@@ -274,20 +277,78 @@ export default function WorldMap({
     setZoom(nextZoom);
   };
 
-  // Click handler on paths
-  const handleCountryClick = (feature: any) => {
+  // Click handler on paths with double-click simulation on mobile touchscreens
+  const handleCountryClick = (e: React.MouseEvent | React.TouchEvent, feature: any) => {
     if (!feature || feature.id === undefined || feature.id === null) return;
     const rawId = feature.id.toString();
     const paddedId = rawId.padStart(3, '0');
     const info = getCountryInfo(paddedId);
-    const countryName = info?.name || `Country (${rawId})`;
+    if (!info) return;
+    const countryName = info.name || `Country (${rawId})`;
 
-    // Select country
-    onSelectCountry(paddedId, countryName);
+    // Detect touch / mobile interface
+    const isMobile = typeof window !== 'undefined' && (
+      'ontouchstart' in window || 
+      navigator.maxTouchPoints > 0 || 
+      window.innerWidth <= 768
+    );
+
+    if (isMobile) {
+      if (mobileHoveredId === paddedId) {
+        // Second click/tap: trigger actual country selection!
+        onSelectCountry(paddedId, countryName);
+        setMobileHoveredId(null);
+        setHoveredCountry(null);
+      } else {
+        // First click/tap: mock the desktop "hover" detail tooltip
+        setMobileHoveredId(paddedId);
+        
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) {
+          let clientX = 0;
+          let clientY = 0;
+          
+          if ('clientX' in e) {
+            clientX = (e as any).clientX;
+            clientY = (e as any).clientY;
+          } else if ('touches' in e && (e as any).touches.length > 0) {
+            clientX = (e as any).touches[0].clientX;
+            clientY = (e as any).touches[0].clientY;
+          } else if ('changedTouches' in e && (e as any).changedTouches.length > 0) {
+            clientX = (e as any).changedTouches[0].clientX;
+            clientY = (e as any).changedTouches[0].clientY;
+          }
+
+          const mouseX = clientX - rect.left;
+          const mouseY = clientY - rect.top;
+
+          setHoveredCountry({
+            id: paddedId,
+            name: info.name,
+            code: info.code,
+            flag: info.flag,
+            count: contactCounts[paddedId] || 0,
+            x: mouseX,
+            y: mouseY - 15,
+          });
+        }
+      }
+    } else {
+      // Laptop or Desktop: single click immediately reveals selection
+      onSelectCountry(paddedId, countryName);
+    }
   };
 
-  // Mouse hover details (for Tooltip)
+  // Mouse hover details (for Tooltip) - disabled on mobile/touch screen to avoid conflicts
   const handleCountryMouseEnter = (e: React.MouseEvent, feature: any) => {
+    // Detect mobile touch
+    const isMobile = typeof window !== 'undefined' && (
+      'ontouchstart' in window || 
+      navigator.maxTouchPoints > 0 || 
+      window.innerWidth <= 768
+    );
+    if (isMobile) return;
+
     if (!feature || feature.id === undefined || feature.id === null) return;
     const rawId = feature.id.toString();
     const paddedId = rawId.padStart(3, '0');
@@ -360,7 +421,7 @@ export default function WorldMap({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onWheel={handleWheel}
-      className={`w-full h-full relative cursor-grab select-none overflow-hidden bg-slate-50/50 touch-none ${
+      className={`w-full h-full relative cursor-grab select-none overflow-hidden bg-[#d4e5f7] touch-none ${
         isDragging ? 'cursor-grabbing' : ''
       }`}
     >
@@ -387,7 +448,7 @@ export default function WorldMap({
         onTouchMove={(e) => e.stopPropagation()}
         onTouchEnd={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
-        className="absolute top-4 left-4 z-40 flex flex-col gap-3 pointer-events-auto w-64 max-w-[calc(100vw-32px)]"
+        className="absolute top-[76px] sm:top-[92px] left-4 sm:left-6 z-40 flex flex-col gap-3 pointer-events-auto w-64 max-w-[calc(100vw-32px)]"
       >
         {/* Statistics bubble */}
         <div 
@@ -611,7 +672,7 @@ export default function WorldMap({
         onTouchMove={(e) => e.stopPropagation()}
         onTouchEnd={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
-        className="absolute top-4 right-4 flex flex-col gap-1.5 z-40"
+        className="absolute top-1/2 -translate-y-1/2 right-4 flex flex-col gap-1.5 z-40"
       >
         <button
           onClick={handleZoomIn}
@@ -658,7 +719,11 @@ export default function WorldMap({
               x={-width}
               y={-height}
               fill="transparent"
-              onClick={() => onSelectCountry(null, '')}
+              onClick={() => {
+                onSelectCountry(null, '');
+                setMobileHoveredId(null);
+                setHoveredCountry(null);
+              }}
             />
 
             {/* Render Country Paths */}
@@ -691,7 +756,7 @@ export default function WorldMap({
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleCountryClick(feature);
+                    handleCountryClick(e, feature);
                   }}
                   onMouseEnter={(e) => handleCountryMouseEnter(e, feature)}
                   onMouseMove={(e) => handleCountryMouseMove(e, feature)}

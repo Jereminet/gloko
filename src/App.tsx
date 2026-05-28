@@ -54,6 +54,7 @@ export default function App() {
   const [selectedCountryName, setSelectedCountryName] = useState<string>('');
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -173,6 +174,7 @@ export default function App() {
       setContacts([]);
       setCountryColors({});
       setSelectedCountryId(null);
+      setShowUserMenu(false);
     } catch (error) {
       console.error('Sign-out operation failed:', error);
     }
@@ -355,91 +357,134 @@ export default function App() {
   const visitedCount = new Set(contacts.map((c) => c.countryId.padStart(3, '0'))).size;
 
   return (
-    <div className="h-screen w-screen bg-[#F9FAFB] flex flex-col overflow-hidden antialiased text-slate-800 font-sans">
-      {/* Top Navigation Frame */}
-      <header className="h-20 border-b border-slate-200 bg-white sticky top-0 z-30 shrink-0">
-        <div className="w-full h-full px-6 flex items-center justify-between">
-          <div
-            className="flex items-center gap-3 cursor-pointer select-none"
-            onClick={() => handleSelectCountry(null, '')}
-          >
-            <div className="w-10 h-10 flex items-center justify-center">
-              <img 
-                src="/favicon.png" 
-                alt="Gloko Logo" 
-                className="w-8 h-8 object-contain rounded-lg"
-              />
-            </div>
-            <h1 className="text-lg font-bold tracking-tight text-slate-900 select-none">
-              Gloko
-            </h1>
-          </div>
+    <div className="h-screen w-screen bg-[#d4e5f7] relative overflow-hidden antialiased text-slate-800 font-sans">
+      
+      {/* Immersive Map Background Layer */}
+      <div className="absolute inset-0 w-full h-full z-0">
+        <WorldMap
+          contacts={contacts}
+          selectedCountryId={selectedCountryId}
+          onSelectCountry={handleSelectCountry}
+          countryColors={countryColors}
+        />
+      </div>
 
-          {/* Action Header Panel */}
-          <div className="flex items-center gap-3 sm:gap-4">
-            {isAuthLoading ? (
-              <div className="w-8 h-8 rounded-full border-2 border-indigo-600/30 border-t-indigo-600 animate-spin" />
-            ) : user ? (
-              <div className="flex items-center gap-2 sm:gap-3 bg-slate-50 border border-slate-200/80 p-1 sm:p-1.5 pl-2.5 sm:pl-3.5 pr-1.5 sm:pr-2 rounded-full shadow-xs animate-in fade-in duration-200 select-none">
-                <div className="flex flex-col text-right">
-                  <span className="text-[10px] sm:text-xs font-bold text-slate-850 line-clamp-1 max-w-[80px] sm:max-w-[120px]">
-                    {user.displayName?.split(' ')[0] || user.email?.split('@')[0] || 'Traveler'}
-                  </span>
-                  <span className="text-[8px] sm:text-[9px] font-semibold text-emerald-600 uppercase tracking-wide flex items-center gap-1 justify-end leading-none">
+      {/* Completely floating Logo & Title in top-left */}
+      <div
+        className="absolute top-4 left-4 sm:top-6 sm:left-6 z-30 flex items-center gap-2.5 sm:gap-3 cursor-pointer select-none hover:scale-105 active:scale-98 transition-all duration-200"
+        onClick={() => {
+          handleSelectCountry(null, '');
+        }}
+        title="View overall statistics"
+      >
+        <div className="w-11 h-11 sm:w-13 sm:h-13 flex items-center justify-center filter drop-shadow-[0_2px_6px_rgba(0,0,0,0.1)]">
+          <img 
+            src="/favicon.png" 
+            alt="Gloko Logo" 
+            className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
+          />
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 select-none drop-shadow-[0_1px_4px_rgba(255,255,255,0.85)]">
+          Gloko
+        </h1>
+      </div>
+
+      {/* Floating Action Header Panel (User Profile bubble on top-right) */}
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-30 flex items-center gap-3">
+        {isAuthLoading ? (
+          <div className="w-8 h-8 rounded-full border-2 border-indigo-600/30 border-t-indigo-600 animate-spin" />
+        ) : user ? (
+          <div className="relative">
+            {/* Close dropdown on click outside */}
+            {showUserMenu && (
+              <div 
+                className="fixed inset-0 z-40 cursor-default" 
+                onClick={() => setShowUserMenu(false)} 
+              />
+            )}
+            
+            {/* Bubble button trigger showing just the user profile photo */}
+            <button
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="flex items-center justify-center focus:outline-none rounded-full cursor-pointer transition-all hover:scale-105 active:scale-95 ring-offset-2 ring-indigo-600/10 focus-visible:ring-2 z-50 relative animate-in fade-in duration-200"
+              title="View Account"
+            >
+              {user.photoURL ? (
+                <img 
+                  src={user.photoURL} 
+                  alt="User Profile" 
+                  className="w-9 h-9 sm:w-11 sm:h-11 rounded-full border-2 border-white shadow-md ring-1 ring-slate-200/50"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-indigo-100 text-indigo-750 font-bold flex items-center justify-center text-sm shadow-md border border-indigo-250/20">
+                  {(user.displayName || 'T').charAt(0).toUpperCase()}
+                </div>
+              )}
+            </button>
+
+            {/* Dropdown Menu Popup Card */}
+            {showUserMenu && (
+              <div className="absolute right-0 mt-2.5 w-52 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-xl p-3 z-50 animate-in fade-in slide-in-from-top-1 duration-150 select-none">
+                {/* User Identity Details */}
+                <div className="px-1.5 py-1">
+                  <div className="text-xs font-bold text-slate-900 line-clamp-1">
+                    {user.displayName || 'Traveler'}
+                  </div>
+                  {user.email && (
+                    <div className="text-[10px] text-slate-500 truncate mt-0.5 font-semibold">
+                      {user.email}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-slate-100 my-1.5" />
+
+                {/* Sync Status Badge block */}
+                <div className="px-2 py-1.5 flex items-center justify-between bg-slate-50/70 border border-slate-100/50 rounded-lg">
+                  <span className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-widest flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Sync
+                    Synced
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                    Cloud
                   </span>
                 </div>
-                {user.photoURL ? (
-                  <img 
-                    src={user.photoURL} 
-                    alt="User Profile" 
-                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-slate-200 shadow-xs"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-100 text-indigo-750 font-bold flex items-center justify-center text-xs shadow-xs">
-                    {(user.displayName || 'T').charAt(0).toUpperCase()}
-                  </div>
-                )}
+
+                <div className="border-t border-slate-100 my-1.5" />
+
+                {/* Interactive Actions */}
                 <button
                   onClick={handleLogout}
-                  className="px-2.5 py-1 sm:px-3 sm:py-1.5 hover:bg-red-50 text-red-550 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer border border-transparent hover:border-red-100 shrink-0 select-none"
+                  className="w-full text-left px-2 py-1.5 text-xs text-red-650 hover:bg-red-50/50 hover:text-red-750 font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-2"
                 >
-                  Log Out
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 animate-in fade-in duration-200">
-                <span className="hidden md:inline text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-none mr-1.5">
-                  Guest Mode
-                </span>
-                <button
-                  onClick={handleLogin}
-                  className="px-3 py-1.5 sm:px-4 sm:py-2 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-full text-xs font-extrabold tracking-tight shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center gap-2 border border-slate-800"
-                >
-                  <svg className="w-3.5 h-3.5 fill-white shrink-0" viewBox="0 0 24 24">
-                    <path d="M12.24 10.285V13.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.529-8 7.859-8c2.46 0 4.105 1.025 5.047 1.926l2.427-2.334C17.955 2.192 15.34 1 12.24 1 6.033 1 1 6.033 1 12.24s5.033 11.24 11.24 11.24c6.478 0 10.793-4.537 10.793-10.986 0-.742-.08-1.302-.172-1.859H12.24z"/>
+                  <svg className="w-3.5 h-3.5 stroke-current fill-none shrink-0" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="16 17 21 12 16 7"></polyline>
+                    <line x1="21" y1="12" x2="9" y2="12"></line>
                   </svg>
-                  Connect
+                  Log Out
                 </button>
               </div>
             )}
           </div>
-        </div>
-      </header>
-
-      {/* Main Workspace Frame takes 100% full-width style edges */}
-      <main className="flex-1 w-full flex flex-col overflow-hidden relative">
-        <div className="w-full flex-grow flex-1 flex flex-col relative min-h-0">
-          <WorldMap
-            contacts={contacts}
-            selectedCountryId={selectedCountryId}
-            onSelectCountry={handleSelectCountry}
-            countryColors={countryColors}
-          />
-        </div>
-      </main>
+        ) : (
+          <div className="flex items-center gap-2 animate-in fade-in duration-200">
+            <span className="hidden md:inline text-[9px] text-slate-500 font-semibold uppercase tracking-widest leading-none mr-1 bg-white/70 backdrop-blur-xs px-2.5 py-1.5 rounded-full border border-slate-200/50 shadow-xs">
+              Guest Mode
+            </span>
+            <button
+              onClick={handleLogin}
+              className="px-3.5 py-1.5 sm:px-4.5 sm:py-2.5 bg-slate-900/90 backdrop-blur-xs hover:bg-slate-950 active:scale-95 text-white rounded-full text-xs font-extrabold tracking-tight shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2 border border-slate-800"
+            >
+              <svg className="w-3.5 h-3.5 fill-white shrink-0" viewBox="0 0 24 24">
+                <path d="M12.24 10.285V13.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.529-8 7.859-8c2.46 0 4.105 1.025 5.047 1.926l2.427-2.334C17.955 2.192 15.34 1 12.24 1 6.033 1 1 6.033 1 12.24s5.033 11.24 11.24 11.24c6.478 0 10.793-4.537 10.793-10.986 0-.742-.08-1.302-.172-1.859H12.24z"/>
+              </svg>
+              Connect
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Center Dialog Popup for Selected Country */}
       {selectedCountryId && (
@@ -511,16 +556,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Minimal Footer */}
-      <footer className="h-12 border-t border-slate-200 bg-white px-4 sm:px-10 flex items-center justify-between text-[10px] text-slate-400 uppercase tracking-widest shrink-0 select-none">
-        <span>© 2026 Mappa Mundi</span>
-        <div className="flex gap-4 sm:gap-6 items-center">
-          <span className="hidden sm:inline">Syncing with Cloud...</span>
-          <span className="text-indigo-600 font-bold hover:text-indigo-700 cursor-pointer" onClick={() => handleSelectCountry(null, '')}>
-            View Summary Stats
-          </span>
-        </div>
-      </footer>
     </div>
   );
 }
