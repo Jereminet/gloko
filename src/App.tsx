@@ -371,20 +371,27 @@ export default function App() {
 
       {/* Completely floating Logo & Title in top-left */}
       <div
-        className="absolute top-4 left-4 sm:top-6 sm:left-6 z-30 flex items-center gap-2.5 sm:gap-3 cursor-pointer select-none hover:scale-105 active:scale-98 transition-all duration-200"
+        className="absolute top-4 left-4 sm:top-6 sm:left-6 z-30 flex items-center gap-2.5 sm:gap-3 cursor-pointer select-none group transition-transform duration-200"
         onClick={() => {
           handleSelectCountry(null, '');
         }}
         title="View overall statistics"
       >
-        <div className="w-11 h-11 sm:w-13 sm:h-13 flex items-center justify-center filter drop-shadow-[0_2px_6px_rgba(0,0,0,0.1)]">
+        <div 
+          className="w-11 h-11 sm:w-13 sm:h-13 flex items-center justify-center bg-white/85 backdrop-blur-md rounded-2xl border border-white/90 shadow-[0_6px_16px_rgba(15,23,42,0.18),inset_0_-2px_4px_rgba(0,0,0,0.06),0_1.5px_2px_rgba(255,255,255,0.8)] group-hover:shadow-[0_8px_24px_rgba(15,23,42,0.26),inset_0_-2px_4px_rgba(0,0,0,0.06)] group-hover:scale-108 group-hover:rotate-3 transition-all duration-300"
+        >
           <img 
             src="/favicon.png" 
             alt="Gloko Logo" 
-            className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
+            className="w-8.5 h-8.5 sm:w-10 sm:h-10 object-contain"
           />
         </div>
-        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 select-none drop-shadow-[0_1px_4px_rgba(255,255,255,0.85)]">
+        <h1 
+          className="text-2xl sm:text-3.5xl font-black tracking-tight text-slate-900 select-none group-hover:scale-102 transition-transform duration-200"
+          style={{
+            textShadow: '0 1px 0 #ffffff, 1px 1.5px 0 #cbd5e1, 1.8px 3px 0 #aec1d8, 2.5px 4.5px 4px rgba(15, 23, 42, 0.22), 3.5px 6.5px 12px rgba(15, 23, 42, 0.12)'
+          }}
+        >
           Gloko
         </h1>
       </div>

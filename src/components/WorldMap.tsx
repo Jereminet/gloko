@@ -121,17 +121,6 @@ export default function WorldMap({
 
   const pathGenerator = d3.geoPath().projection(projection);
 
-  // Helper to generate a beautiful, unique soft signature pastel color for each country
-  const getNiceDefaultColorForCountry = (countryId: string) => {
-    const padded = countryId.padStart(3, '0');
-    let hash = 0;
-    for (let i = 0; i < padded.length; i++) {
-      hash = padded.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const hue = Math.abs(hash) % 360;
-    return `hsl(${hue}, 75%, 72%)`; // Soft beautiful natural pastel
-  };
-
   // Helper to resolve coloring: unrecorded stays light slate gray, recorded receives customized or default pretty pastel hue!
   const getCountryColor = (countryId: string, count: number, isSelected: boolean) => {
     const paddedId = countryId.padStart(3, '0');
@@ -141,10 +130,24 @@ export default function WorldMap({
     }
 
     if (count === 0) {
+      if (isSelected) {
+        return '#cca670'; // Rich/deep warm golden-biscuit color when selected (very strong contrast!)
+      }
       return '#efe5d3'; // Elegant clear light beige for countries without friends
     }
 
-    return getNiceDefaultColorForCountry(paddedId);
+    // Convert country ID to hash-based hue
+    let hash = 0;
+    for (let i = 0; i < paddedId.length; i++) {
+      hash = paddedId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = Math.abs(hash) % 360;
+
+    if (isSelected) {
+      return `hsl(${hue}, 95%, 45%)`; // Extremely rich, vibrant, highly saturated color when selected (strong click feedback!)
+    }
+
+    return `hsl(${hue}, 75%, 72%)`; // Soft beautiful natural pastel
   };
 
   // Zoom handlers
@@ -170,12 +173,14 @@ export default function WorldMap({
 
   // Pan handlers (Mouse + Touch support for mobile devices)
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (mobileHoveredId) return; // Map is locked!
     if (e.button !== 0) return; // Only left click
     setIsDragging(true);
     dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (mobileHoveredId) return; // Map is locked!
     if (!isDragging) return;
     setPosition({
       x: e.clientX - dragStart.current.x,
@@ -188,6 +193,7 @@ export default function WorldMap({
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (mobileHoveredId) return; // Map is locked!
     if (e.touches.length === 2) {
       // Two fingers: pinch zoom
       setIsDragging(false); // Disable dragging
@@ -217,6 +223,7 @@ export default function WorldMap({
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (mobileHoveredId) return; // Map is locked!
     if (e.touches.length === 2 && touchStartDist.current !== null) {
       const t1 = e.touches[0];
       const t2 = e.touches[1];
@@ -254,6 +261,7 @@ export default function WorldMap({
 
   // Extremely smooth, responsive mouse-centered focal wheel zoom
   const handleWheel = (e: React.WheelEvent) => {
+    if (mobileHoveredId) return; // Map is locked!
     e.preventDefault();
     if (loading) return;
 
@@ -404,6 +412,8 @@ export default function WorldMap({
     onSelectCountry(countryId, countryName);
     setSearchQuery('');
     setShowDropdown(false);
+    setMobileHoveredId(null);
+    setHoveredCountry(null);
 
     // Focus / slide map to center approximately based on projection
     // For extreme simplicity and polish, we center on selection or reset zoom
@@ -742,6 +752,7 @@ export default function WorldMap({
 
               const count = contactCounts[paddedId] || 0;
               const isSelected = selectedCountryId === paddedId;
+              const isMobileHovered = mobileHoveredId === paddedId;
 
               return (
                 <path
@@ -749,7 +760,7 @@ export default function WorldMap({
                   d={pathData}
                   fill={getCountryColor(paddedId, count, isSelected)}
                   stroke={isSelected ? '#4f46e5' : '#000000'}
-                  strokeWidth={isSelected ? 2.5 / zoom : 1.2 / zoom}
+                  strokeWidth={isSelected ? 1.8 / zoom : (isMobileHovered ? 2.8 / zoom : 0.75 / zoom)}
                   className="map-country select-none outline-none"
                   style={{
                     fill: getCountryColor(paddedId, count, isSelected),
