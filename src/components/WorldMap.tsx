@@ -748,8 +748,8 @@ export default function WorldMap({
                   key={paddedId}
                   d={pathData}
                   fill={getCountryColor(paddedId, count, isSelected)}
-                  stroke={isSelected ? '#4f46e5' : '#e2e8f0'}
-                  strokeWidth={isSelected ? 1.5 / zoom : 0.6 / zoom}
+                  stroke={isSelected ? '#4f46e5' : '#000000'}
+                  strokeWidth={isSelected ? 2.5 / zoom : 1.2 / zoom}
                   className="map-country select-none outline-none"
                   style={{
                     fill: getCountryColor(paddedId, count, isSelected),

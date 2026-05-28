@@ -1,4 +1,6 @@
-Keep track of contacts met during travels, mapped by country with a small description so you know who to visit for your next trip!
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
 # Run and deploy your AI Studio app
 
