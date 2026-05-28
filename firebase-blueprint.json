@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "Contact": {
+      "title": "Contact",
+      "description": "A travel friend/contact registered in a country",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "countryId": { "type": "string" },
+        "countryName": { "type": "string" },
+        "city": { "type": "string" },
+        "contactInfo": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "name", "countryId", "countryName", "city", "contactInfo", "notes", "createdAt"]
+    },
+    "CountryColor": {
+      "title": "CountryColor",
+      "description": "User custom color selection for a country",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "countryId": { "type": "string" },
+        "color": { "type": "string" }
+      },
+      "required": ["userId", "countryId", "color"]
+    }
+  },
+  "firestore": {
+    "/contacts/{contactId}": {
+      "schema": "Contact",
+      "description": "Store all individual contacts mapped by user"
+    },
+    "/users/{userId}/colors/{countryId}": {
+      "schema": "CountryColor",
+      "description": "Store user custom country colors"
+    }
+  }
+}

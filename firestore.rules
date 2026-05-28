@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Helper Primitives (Phase 3)
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isUserVerified() {
+      return isSignedIn() && (request.auth.token.email_verified == true);
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Helper functions for validating payloads (Phase 4)
+    function isValidContact(data) {
+      return data.keys().hasAll(['id', 'userId', 'name', 'countryId', 'countryName', 'city', 'contactInfo', 'notes', 'createdAt'])
+          && data.keys().size() <= 10
+          && data.id is string && data.id.size() <= 128
+          && data.userId is string && data.userId == request.auth.uid
+          && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+          && data.countryId is string && data.countryId.size() <= 10
+          && data.countryName is string && data.countryName.size() <= 100
+          && data.city is string && data.city.size() <= 100
+          && data.contactInfo is string && data.contactInfo.size() <= 200
+          && data.notes is string && data.notes.size() <= 2000
+          && data.createdAt is string && data.createdAt.size() <= 100
+          && (!('photoUrl' in data) || data.photoUrl is string && data.photoUrl.size() <= 2000);
+    }
+
+    function isValidCountryColor(data) {
+      return data.keys().hasAll(['userId', 'countryId', 'color'])
+          && data.keys().size() == 3
+          && data.userId is string && data.userId == request.auth.uid
+          && data.countryId is string && data.countryId.size() <= 10
+          && data.color is string && data.color.size() <= 50;
+    }
+
+    // Contacts collection rules
+    match /contacts/{contactId} {
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Multi-User relational separation: list queries must filter by user ID (Pillar 8)
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isUserVerified() && isValidId(contactId) && isValidContact(request.resource.data);
+      
+      allow update: if isUserVerified() && isValidId(contactId) && isValidContact(request.resource.data) 
+                    && resource.data.userId == request.auth.uid
+                    && request.resource.data.userId == request.auth.uid;
+                    
+      allow delete: if isUserVerified() && resource.data.userId == request.auth.uid;
+    }
+
+    // User subcollection rules for Country Colors
+    match /users/{userId}/colors/{countryId} {
+      allow read: if isSignedIn() && userId == request.auth.uid;
+      
+      allow create, update: if isUserVerified() && userId == request.auth.uid && isValidId(countryId) && isValidCountryColor(request.resource.data);
+      
+      allow delete: if isUserVerified() && userId == request.auth.uid;
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Gloko",
+  "description": "An interactive global connections directory that lets you track friends, contacts, and memories across the world map.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
