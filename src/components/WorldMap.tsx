@@ -10,6 +10,7 @@ interface WorldMapProps {
   selectedCountryId: string | null;
   onSelectCountry: (countryId: string | null, countryName: string) => void;
   countryColors?: Record<string, string>;
+  onMapLoaded?: () => void;
 }
 
 const WorldMap = forwardRef<any, WorldMapProps>(({
@@ -17,6 +18,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   selectedCountryId,
   onSelectCountry,
   countryColors = {},
+  onMapLoaded,
 }, ref) => {
   const [geoData, setGeoData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -26,14 +28,17 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   const width = 960;
   const height = 500;
 
-  // Track map transform (Zoom/Pan state) focusing on Belgium
-  const [zoom, setZoom] = useState(1.2);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  // Track map transform (Zoom/Pan state) focusing on Europe on load
+  const [zoom, setZoom] = useState(1.25);
+  const [position, setPosition] = useState({ x: -15, y: 35 });
 
-  // Center nicely on Belgium on mount
+  // Center nicely on mount depending on device type
   useEffect(() => {
-    setZoom(1.2);
-    setPosition({ x: 0, y: 0 });
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+    const initialZoom = isMobile ? 0.6 : 1.25;
+    const initialPos = isMobile ? { x: -60, y: 80 } : { x: -15, y: 35 };
+    setZoom(initialZoom);
+    setPosition(initialPos);
   }, []);
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
@@ -81,6 +86,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
       if (index >= urls.length) {
         setError('Could not load map data from any network mirror. Please try refreshing.');
         setLoading(false);
+        onMapLoaded?.();
         return;
       }
 
@@ -97,6 +103,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           const countriesGeo = feature(data, data.objects.countries) as any;
           setGeoData(countriesGeo);
           setLoading(false);
+          onMapLoaded?.();
         })
         .catch((err) => {
           console.warn(`Failed to fetch from host ${urls[index]}:`, err);
@@ -108,12 +115,12 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     tryFetch(0);
   }, []);
 
-  // Configure projection: GeoNaturalEarth1 centered on Belgium
+  // Configure projection: Equirectangular flat map so top countries are not squished or heap up
   const projection = d3
-    .geoNaturalEarth1()
-    .center([4.4699, 50.5039])
-    .scale(190)
-    .translate([width / 2, height / 2.3]);
+    .geoEquirectangular()
+    .center([0, 15])
+    .scale(152)
+    .translate([width / 2, height / 1.7]);
 
   const pathGenerator = d3.geoPath().projection(projection);
 
@@ -167,22 +174,22 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     let minX, maxX, minY, maxY;
 
     if (mapW > viewW) {
-      // Allow padding of 150px of visible ocean lines
-      minX = viewW - mapW - 150;
-      maxX = 150;
+      // Allow padding of 100px of visible ocean lines
+      minX = viewW - mapW - 100;
+      maxX = 100;
     } else {
       const defaultX = (viewW - mapW) / 2;
-      minX = defaultX - 80;
-      maxX = defaultX + 80;
+      minX = defaultX - 100;
+      maxX = defaultX + 100;
     }
 
     if (mapH > viewH) {
-      minY = viewH - mapH - 150;
-      maxY = 150;
+      minY = viewH - mapH - 100;
+      maxY = 100;
     } else {
       const defaultY = (viewH - mapH) / 2;
-      minY = defaultY - 80;
-      maxY = defaultY + 80;
+      minY = defaultY - 100;
+      maxY = defaultY + 100;
     }
 
     return {
@@ -197,7 +204,9 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     const centerX = rect ? rect.width / 2 : width / 2;
     const centerY = rect ? rect.height / 2 : height / 2;
     
-    const nextZoom = Math.max(0.8, Math.min(zoom * factor, 12));
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+    const minZoom = isMobile ? 0.35 : 0.7;
+    const nextZoom = Math.max(minZoom, Math.min(zoom * factor, 12));
     const nextPos = {
       x: centerX - (nextZoom / zoom) * (centerX - position.x),
       y: centerY - (nextZoom / zoom) * (centerY - position.y),
@@ -209,8 +218,11 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   const handleZoomIn = () => scaleRelative(1.5);
   const handleZoomOut = () => scaleRelative(1 / 1.5);
   const handleReset = () => {
-    setZoom(1.2);
-    setPosition({ x: 0, y: 0 });
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+    const initialZoom = isMobile ? 0.6 : 1.25;
+    const initialPos = isMobile ? { x: -60, y: 80 } : { x: -15, y: 35 };
+    setZoom(initialZoom);
+    setPosition(initialPos);
   };
 
   // Pan handlers (Mouse + Touch support with focal-centered touch coordinate pinch & automatic release of selection on movement/pan)
@@ -289,7 +301,9 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
       if (currentDist === 0) return;
       
       const scale = currentDist / touchStartDist.current;
-      const nextZoom = Math.max(0.8, Math.min(touchStartZoom.current * scale, 12));
+      const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+      const minZoom = isMobile ? 0.35 : 0.7;
+      const nextZoom = Math.max(minZoom, Math.min(touchStartZoom.current * scale, 12));
       
       const mid = touchStartMidpoint.current;
       const initZoom = touchStartZoom.current;
@@ -333,7 +347,9 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     const mouseY = e.clientY - rect.top;
 
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
-    const nextZoom = Math.max(0.8, Math.min(zoom * zoomFactor, 12));
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+    const minZoom = isMobile ? 0.35 : 0.7;
+    const nextZoom = Math.max(minZoom, Math.min(zoom * zoomFactor, 12));
 
     const nextPos = {
       x: mouseX - (mouseX - position.x) * (nextZoom / zoom),
@@ -344,7 +360,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     setZoom(nextZoom);
   };
 
-  // Click handler on paths with double-click simulation on mobile touchscreens
+  // Click handler on paths
   const handleCountryClick = (e: React.MouseEvent | React.TouchEvent, feature: any) => {
     if (!feature || feature.id === undefined || feature.id === null) return;
     const rawId = feature.id.toString();
@@ -353,57 +369,8 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     if (!info) return;
     const countryName = info.name || `Country (${rawId})`;
 
-    // Detect touch / mobile interface
-    const isMobile = typeof window !== 'undefined' && (
-      'ontouchstart' in window || 
-      navigator.maxTouchPoints > 0 || 
-      window.innerWidth <= 768
-    );
-
-    if (isMobile) {
-      if (mobileHoveredId === paddedId) {
-        // Second click/tap: trigger actual country selection!
-        onSelectCountry(paddedId, countryName);
-        setMobileHoveredId(null);
-        setHoveredCountry(null);
-      } else {
-        // First click/tap: mock the desktop "hover" detail tooltip
-        setMobileHoveredId(paddedId);
-        
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (rect) {
-          let clientX = 0;
-          let clientY = 0;
-          
-          if ('clientX' in e) {
-            clientX = (e as any).clientX;
-            clientY = (e as any).clientY;
-          } else if ('touches' in e && (e as any).touches.length > 0) {
-            clientX = (e as any).touches[0].clientX;
-            clientY = (e as any).touches[0].clientY;
-          } else if ('changedTouches' in e && (e as any).changedTouches.length > 0) {
-            clientX = (e as any).changedTouches[0].clientX;
-            clientY = (e as any).changedTouches[0].clientY;
-          }
-
-          const mouseX = clientX - rect.left;
-          const mouseY = clientY - rect.top;
-
-          setHoveredCountry({
-            id: paddedId,
-            name: info.name,
-            code: info.code,
-            flag: info.flag,
-            count: contactCounts[paddedId] || 0,
-            x: mouseX,
-            y: mouseY - 15,
-          });
-        }
-      }
-    } else {
-      // Laptop or Desktop: single click immediately reveals selection
-      onSelectCountry(paddedId, countryName);
-    }
+    // Single click/tap immediately selects country and shows details
+    onSelectCountry(paddedId, countryName);
   };
 
   // Mouse hover details (for Tooltip) - disabled on mobile/touch screen to avoid conflicts
@@ -502,13 +469,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
         isDragging ? 'cursor-grabbing' : ''
       }`}
     >
-      {loading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/75 backdrop-blur-sm z-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-600 border-t-transparent mb-3" />
-          <span className="text-xs text-slate-500 font-sans font-medium">Loading map boundaries...</span>
-        </div>
-      )}
-
       {error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-white p-6 z-10 text-center">
           <span className="text-2xl mb-2">⚡</span>
@@ -527,124 +487,111 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
         onWheel={(e) => e.stopPropagation()}
         className="absolute top-[76px] sm:top-[92px] left-4 sm:left-6 z-40 flex flex-col gap-3 pointer-events-auto w-64 max-w-[calc(100vw-32px)]"
       >
-        {/* Statistics bubble */}
+        {/* Unified Friends Book panel */}
         <div 
-          onClick={() => setShowStatsDetail((prev) => !prev)}
-          className="bg-white/95 backdrop-blur-sm px-4 py-3.5 rounded-2xl border border-slate-200/80 shadow-md flex flex-col gap-1 select-none font-sans cursor-pointer hover:bg-slate-50 transition-all hover:shadow-lg active:scale-[0.98]"
-          title="Click to view/hide friends book"
+          className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/80 shadow-md select-none font-sans overflow-hidden transition-all flex flex-col w-full"
         >
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-[9px] font-bold text-indigo-650 uppercase tracking-widest leading-none">
-              <span>📖</span> Friends Book
-            </span>
-            <span className="text-[8px] text-slate-400 font-medium font-sans bg-slate-100 px-1 py-0.5 rounded">
-              {showStatsDetail ? 'Hide list' : 'Click to expand'}
-            </span>
-          </div>
-          <div className="flex items-baseline gap-1.5 mt-1">
-            <span className="text-base font-bold text-slate-800 leading-none">
-              {new Set(contacts.map((c) => c.countryId.padStart(3, '0'))).size}
-            </span>
-            <span className="text-[10px] text-slate-400 font-medium">Countries</span>
-            <span className="text-xs text-slate-300 mx-1">|</span>
-            <span className="text-base font-bold text-slate-800 leading-none">{contacts.length}</span>
-            <span className="text-[10px] text-slate-400 font-medium font-sans">Friends</span>
-          </div>
-        </div>
-
-        {/* Small Popup directory of friends per country */}
-        {showStatsDetail && (
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/80 shadow-xl overflow-hidden flex flex-col w-full max-h-[260px] sm:max-h-[350px] animate-in fade-in slide-in-from-top-1 duration-150">
-            {/* Pop-up header */}
-            <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                Friends Directory
+          {/* Header section which expands/collapses the popup inline */}
+          <div 
+            onClick={() => setShowStatsDetail((prev) => !prev)}
+            className="px-4 py-3.5 flex flex-col gap-1 cursor-pointer hover:bg-slate-50 transition-colors select-none"
+            title="Click to view/hide friends list"
+          >
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-[9px] font-bold text-indigo-650 uppercase tracking-widest leading-none">
+                <span>📖</span> Friends Book
               </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowStatsDetail(false);
-                }}
-                className="p-1 hover:bg-slate-200/50 hover:text-slate-700 text-slate-400 rounded-lg transition-colors cursor-pointer"
-                title="Close directory"
-              >
-                <X className="h-3 w-3" />
-              </button>
+              <span className="text-[8px] text-slate-400 font-medium font-sans bg-slate-150 px-1.5 py-0.5 rounded">
+                {showStatsDetail ? 'Hide list' : 'Click to expand'}
+              </span>
             </div>
-
-            {/* Menu Directory Content */}
-            <div className="overflow-y-auto flex-grow divide-y divide-slate-100/60 p-1 bg-white">
-              {contacts.length === 0 ? (
-                <div className="py-8 px-4 text-center text-[11px] text-slate-400">
-                  You don't have any friends recorded yet. Click a country to add!
-                </div>
-              ) : (
-                Object.keys(contactCounts).map((paddedId) => {
-                  const country = COUNTRY_BY_ID[paddedId];
-                  const countryName = country?.name || `Country #${paddedId}`;
-                  const countryFlag = country?.flag || '🗺️';
-                  const countryFriends = contacts.filter(
-                    (c) => c.countryId.padStart(3, '0') === paddedId
-                  );
-
-                  return {
-                    id: paddedId,
-                    name: countryName,
-                    flag: countryFlag,
-                    friends: countryFriends,
-                  };
-                })
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((group) => (
-                  <div key={group.id} className="p-2 flex flex-col gap-1.5 hover:bg-slate-50/40 rounded-xl transition-colors">
-                    {/* Header trigger to select country on map */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectCountry(group.id, group.name);
-                      }}
-                      className="w-full text-left flex items-center justify-between text-xs font-semibold text-slate-800 hover:text-indigo-650 transition-colors group cursor-pointer"
-                    >
-                      <span className="flex items-center gap-1.5 truncate">
-                        <span className="text-base shrink-0 leading-none">{group.flag}</span>
-                        <span className="truncate group-hover:underline">{group.name}</span>
-                      </span>
-                      <span className="text-[9px] text-indigo-650 bg-indigo-50/70 py-0.5 px-1.5 font-bold rounded">
-                        {group.friends.length}
-                      </span>
-                    </button>
-
-                    {/* Compact list of individual connections for this country */}
-                    <div className="pl-5.5 flex flex-col gap-1">
-                      {group.friends.map((friend) => (
-                        <div 
-                          key={friend.id}
-                          className="bg-slate-50/40 border border-slate-100/50 p-1.5 rounded-lg flex flex-col gap-0.5"
-                        >
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="text-[10px] font-bold text-slate-705 truncate">
-                              {friend.name}
-                            </span>
-                          </div>
-                          {friend.city && (
-                            <span className="text-[9px] text-slate-400 font-normal">
-                              📍 {friend.city}
-                            </span>
-                          )}
-                          {friend.contactInfo && (
-                            <span className="text-[8px] text-slate-400 font-mono tracking-tight pt-0.5 line-clamp-1 truncate">
-                              ✉️ {friend.contactInfo}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
+            <div className="flex items-baseline gap-1.5 mt-1">
+              <span className="text-base font-bold text-slate-800 leading-none">
+                {new Set(contacts.map((c) => c.countryId.padStart(3, '0'))).size}
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">Countries</span>
+              <span className="text-xs text-slate-400 mx-1">|</span>
+              <span className="text-base font-bold text-slate-800 leading-none">{contacts.length}</span>
+              <span className="text-[10px] text-slate-400 font-medium font-sans">Friends</span>
             </div>
           </div>
-        )}
+
+          {/* Inline Expanded Directory Area */}
+          {showStatsDetail && (
+            <div className="border-t border-slate-100 flex flex-col w-full max-h-[250px] sm:max-h-[320px] bg-white animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="overflow-y-auto flex-grow divide-y divide-slate-100/60 p-1">
+                {contacts.length === 0 ? (
+                  <div className="py-8 px-4 text-center text-[11px] text-slate-400">
+                    You don't have any friends recorded yet. Click a country to add!
+                  </div>
+                ) : (
+                  Object.keys(contactCounts).map((paddedId) => {
+                    const country = COUNTRY_BY_ID[paddedId];
+                    const countryName = country?.name || `Country #${paddedId}`;
+                    const countryFlag = country?.flag || '🗺️';
+                    const countryFriends = contacts.filter(
+                      (c) => c.countryId.padStart(3, '0') === paddedId
+                    );
+
+                    return {
+                      id: paddedId,
+                      name: countryName,
+                      flag: countryFlag,
+                      friends: countryFriends,
+                    };
+                  })
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((group) => (
+                    <div key={group.id} className="p-2 flex flex-col gap-1.5 hover:bg-slate-50/40 rounded-xl transition-colors">
+                      {/* Header trigger to select country on map */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectCountry(group.id, group.name);
+                        }}
+                        className="w-full text-left flex items-center justify-between text-xs font-semibold text-slate-800 hover:text-indigo-650 transition-colors group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 truncate">
+                          <span className="text-base shrink-0 leading-none">{group.flag}</span>
+                          <span className="truncate group-hover:underline">{group.name}</span>
+                        </span>
+                        <span className="text-[9px] text-indigo-650 bg-indigo-50/70 py-0.5 px-1.5 font-bold rounded">
+                          {group.friends.length}
+                        </span>
+                      </button>
+
+                      {/* Compact list of individual connections for this country */}
+                      <div className="pl-5.5 flex flex-col gap-1">
+                        {group.friends.map((friend) => (
+                          <div 
+                            key={friend.id}
+                            className="bg-slate-50/40 border border-slate-100/50 p-1.5 rounded-lg flex flex-col gap-0.5"
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] font-bold text-slate-705 truncate">
+                                {friend.name}
+                              </span>
+                            </div>
+                            {friend.city && (
+                              <span className="text-[9px] text-slate-400 font-normal">
+                                📍 {friend.city}
+                              </span>
+                            )}
+                            {friend.contactInfo && (
+                              <span className="text-[8px] text-slate-400 font-mono tracking-tight pt-0.5 line-clamp-1 truncate">
+                                ✉️ {friend.contactInfo}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Floating Google-Maps-Style Search Bar */}
         <div className="relative w-full shadow-md rounded-xl bg-white border border-slate-200/80">
@@ -846,27 +793,44 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
             {/* Handcrafted Non-Repeating Ocean Decorations: waves, sailboat, submarine, squid & fish */}
             <g id="ocean-decorations">
-              {/* Waves */}
-              <g transform="translate(120, 150)" opacity="0.65">
+              {/* Scattered Waves */}
+              {/* Pacific Left */}
+              <g transform="translate(60, 150)" opacity="0.65">
                 <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
               </g>
-              <g transform="translate(280, 260)" opacity="0.65">
+              <g transform="translate(270, 110)" opacity="0.65">
                 <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
               </g>
-              <g transform="translate(910, 180)" opacity="0.65">
+              <g transform="translate(80, 360)" opacity="0.65">
                 <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
               </g>
-              <g transform="translate(880, 450)" opacity="0.65">
+              <g transform="translate(290, 460)" opacity="0.65">
                 <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
               </g>
-              <g transform="translate(450, 530)" opacity="0.65">
+              {/* Atlantic Middle */}
+              <g transform="translate(370, 130)" opacity="0.65">
                 <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
               </g>
-              <g transform="translate(520, 60)" opacity="0.65">
+              <g transform="translate(480, 370)" opacity="0.65">
+                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </g>
+              {/* Indian Middle-Right */}
+              <g transform="translate(640, 260)" opacity="0.65">
+                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </g>
+              <g transform="translate(770, 320)" opacity="0.65">
+                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </g>
+              {/* Pacific Right */}
+              <g transform="translate(930, 120)" opacity="0.65">
+                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </g>
+              <g transform="translate(860, 470)" opacity="0.65">
                 <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
               </g>
 
-              {/* Miniature Sailboat 1 (North Atlantic) */}
+              {/* SAILBOATS (Various occurrences, non-repeating positions/scales) */}
+              {/* Sailboat 1 (North Atlantic) */}
               <g transform="translate(320, 180)" opacity="0.8">
                 <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
                 <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
@@ -874,8 +838,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
                 <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
               </g>
-
-              {/* Miniature Sailboat 2 (South Indian Ocean) */}
+              {/* Sailboat 2 (South Indian Ocean) */}
               <g transform="translate(740, 440)" opacity="0.8">
                 <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
                 <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
@@ -883,9 +846,23 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
                 <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
               </g>
+              {/* Sailboat 3 (North Pacific Left, slightly rotated) */}
+              <g transform="translate(140, 110) rotate(-5)" opacity="0.75">
+                <path d="M -1 -10 L -1 -1 L -5 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.7" />
+                <path d="M 1 -11 L 1 -1 L 5 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.7" />
+                <path d="M -7 1 L 7 1 L 4.5 4.5 L -4.5 4.5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.7" />
+                <line x1="0" y1="-11" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.7" />
+              </g>
+              {/* Sailboat 4 (North Pacific Right, slightly larger) */}
+              <g transform="translate(870, 140) scale(1.15)" opacity="0.8">
+                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f1f5f9" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#f8fafc" stroke="#6b7280" strokeWidth="0.75" />
+              </g>
 
-              {/* Miniature Submarine (South Pacific) */}
-              <g transform="translate(180, 420)" opacity="0.8">
+              {/* SUBMARINES (Multiple occurrences, varied scales) */}
+              {/* Submarine 1 (South Pacific Left) */}
+              <g transform="translate(140, 440)" opacity="0.85">
                 <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#9bbad6" stroke="#5d7b96" strokeWidth="0.8" />
                 <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#7594b0" stroke="#5d7b96" strokeWidth="0.7" />
                 <line x1="-12" y1="-2" x2="-12" y2="2" stroke="#5d7b96" strokeWidth="0.8" />
@@ -895,12 +872,40 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 <circle cx="-3" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
                 <circle cx="2" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
                 <circle cx="7" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
-                {/* trailing bubbles */}
                 <circle cx="-19" cy="-1" r="0.75" fill="#ffffff" opacity="0.7" />
                 <circle cx="-23" cy="-3" r="1" fill="#ffffff" opacity="0.5" />
               </g>
+              {/* Submarine 2 (South Atlantic, scaled down) */}
+              <g transform="translate(410, 320) scale(0.85)" opacity="0.8">
+                <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8baec9" stroke="#4d6b85" strokeWidth="0.85" />
+                <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#6a879e" stroke="#4d6b85" strokeWidth="0.75" />
+                <line x1="-12" y1="-2" x2="-12" y2="2" stroke="#4d6b85" strokeWidth="0.8" />
+                <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8baec9" stroke="#4d6b85" strokeWidth="0.85" />
+                <path d="M 1 -10 L 1 -6" fill="none" stroke="#4d6b85" strokeWidth="0.8" />
+                <circle cx="-3" cy="0" r="1.2" fill="#ffffff" />
+                <circle cx="2" cy="0" r="1.2" fill="#ffffff" />
+                <circle cx="-18" cy="0" r="0.7" fill="#ffffff" opacity="0.75" />
+              </g>
+              {/* Submarine 3 (East Indian Ocean, facing other side) */}
+              <g transform="translate(700, 330) scale(-0.9, 0.9)" opacity="0.8">
+                <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#adbcd6" stroke="#667794" strokeWidth="0.8" />
+                <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#8e9eb8" stroke="#667794" strokeWidth="0.7" />
+                <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#adbcd6" stroke="#667794" strokeWidth="0.8" />
+                <path d="M 1 -11 L 1 -6" fill="none" stroke="#667794" strokeWidth="0.8" />
+                <circle cx="-3" cy="0" r="1.2" fill="#ffffff" />
+                <circle cx="2" cy="0" r="1.2" fill="#ffffff" />
+                <circle cx="-20" cy="-2" r="0.8" fill="#ffffff" opacity="0.6" />
+              </g>
+              {/* Submarine 4 (South Pacific East) */}
+              <g transform="translate(840, 420) scale(0.95)" opacity="0.8">
+                <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
+                <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#69869c" stroke="#49657a" strokeWidth="0.75" />
+                <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
+                <circle cx="1" cy="0" r="1.3" fill="#ffffff" />
+              </g>
 
-              {/* Giant/Cute Squid (Indian Ocean, near equator) */}
+              {/* SQUIDS (Multiple occurrences) */}
+              {/* Squid 1 (Middle Indian Ocean) */}
               <g transform="translate(580, 350)" opacity="0.75">
                 <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
                 <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
@@ -912,9 +917,40 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 <path d="M 1 9 Q 1.5 15 0.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
                 <path d="M 2.5 9 Q 4 14 2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
               </g>
+              {/* Squid 2 (North Pacific, scaled down/light pinkish-teal) */}
+              <g transform="translate(230, 240) scale(0.8) rotate(15)" opacity="0.78">
+                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ccdbe8" stroke="#7e95a8" strokeWidth="0.8" />
+                <circle cx="-1.5" cy="3" r="0.8" fill="#1e293b" />
+                <circle cx="1.5" cy="3" r="0.8" fill="#1e293b" />
+                <path d="M -5 -1 L -8 -3" stroke="#7e95a8" strokeWidth="0.7" />
+                <path d="M 5 -1 L 8 -3" stroke="#7e95a8" strokeWidth="0.7" />
+                <path d="M -2.5 9 C -3.5 13 -2.5 16 -2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                <path d="M 0 9 C -0.5 13 0.5 17 0.5 17" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                <path d="M 2.5 9 C 1.5 13 2.5 16 2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+              </g>
+              {/* Squid 3 (South Atlantic) */}
+              <g transform="translate(450, 430) scale(0.9)" opacity="0.72">
+                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ebc5b8" stroke="#ad887c" strokeWidth="0.8" />
+                <circle cx="-1.7" cy="3" r="0.8" fill="#1e293b" />
+                <circle cx="1.7" cy="3" r="0.8" fill="#1e293b" />
+                <path d="M -2.5 9 Q -4 13 -2.8 16" fill="none" stroke="#ad887c" strokeWidth="0.8" />
+                <path d="M 0 9 Q -1 14 0.5 17" fill="none" stroke="#ad887c" strokeWidth="0.8" />
+                <path d="M 2.5 9 Q 4 13 2.8 16" fill="none" stroke="#ad887c" strokeWidth="0.8" />
+              </g>
+              {/* Squid 4 (South Pacific East, slightly larger) */}
+              <g transform="translate(910, 380) scale(1.1) rotate(-10)" opacity="0.75">
+                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
+                <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
+                <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
+                <path d="M -2.5 9 L -3.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                <path d="M -1 9 L -1.5 19" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                <path d="M 1 9 L 1.5 19" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                <path d="M 2.5 9 L 3.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" />
+              </g>
 
-              {/* Fish School A (South Atlantic) */}
-              <g transform="translate(440, 460)" opacity="0.8">
+              {/* FISH SCHOOLS (Varied occurrence patterns) */}
+              {/* Fish School A (South Pacific Left) */}
+              <g transform="translate(120, 450)" opacity="0.8">
                 <g transform="translate(0, 0)">
                   <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
                 </g>
@@ -925,8 +961,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                   <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
                 </g>
               </g>
-
-              {/* Fish School B (North Pacific) */}
+              {/* Fish School B (North Pacific Left, reversed) */}
               <g transform="translate(100, 220)" opacity="0.8">
                 <g transform="translate(0, 0) scale(-1, 1)">
                   <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
@@ -934,8 +969,103 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 <g transform="translate(12, 6) scale(-0.8, 0.8)">
                   <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
                 </g>
-                <g transform="translate(6, -8) scale(-0.9, 0.9)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+              </g>
+              {/* Fish School C (North Atlantic) */}
+              <g transform="translate(440, 240) scale(0.95)" opacity="0.75">
+                <g transform="translate(0, 0)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+                <g transform="translate(-10, -5) scale(0.85)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+                <g transform="translate(-8, 6) scale(0.75)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+              </g>
+              {/* Fish School D (South Atlantic Deep) */}
+              <g transform="translate(520, 470) scale(0.9)" opacity="0.8">
+                <g transform="translate(0, 0)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+                <g transform="translate(10, 4) scale(0.8)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+              </g>
+              {/* Fish School E (East Indian Ocean) */}
+              <g transform="translate(670, 280) scale(-1, 1)" opacity="0.8">
+                <g transform="translate(0, 0)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+                <g transform="translate(11, -5) scale(0.85)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+              </g>
+              {/* Fish School F (North Pacific Right) */}
+              <g transform="translate(890, 220) scale(1.05)" opacity="0.75">
+                <g transform="translate(0, 0)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+                <g transform="translate(8, 4) scale(0.8)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+              </g>
+
+              {/* Additional Occurrences of Ocean Decorations to increase density & randomized occurrences */}
+              {/* Sailboat 5 (Arabian Sea / West Indian Ocean) */}
+              <g transform="translate(560, 260) scale(0.9)" opacity="0.8">
+                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
+                <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
+              </g>
+              {/* Sailboat 6 (South Pacific near Tahiti / Cook Islands) */}
+              <g transform="translate(240, 380) scale(1.1) rotate(6)" opacity="0.8">
+                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
+                <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
+              </g>
+              {/* Submarine 5 (Southern Ocean / Cold Antarctica margin) */}
+              <g transform="translate(340, 470) scale(0.9)" opacity="0.8">
+                <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
+                <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#69869c" stroke="#49657a" strokeWidth="0.75" />
+                <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
+                <circle cx="1" cy="0" r="1.3" fill="#ffffff" />
+              </g>
+              {/* Squid 5 (Central Pacific near Equator) */}
+              <g transform="translate(80, 290) scale(0.85) rotate(-15)" opacity="0.75">
+                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
+                <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
+                <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
+                <path d="M -2.5 9 Q -4 14 -2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                <path d="M 0 9 Q -1 14 0.5 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                <path d="M 2.5 9 Q 4 14 2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
+              </g>
+              {/* Squid 6 (North Atlantic Western Ridge) */}
+              <g transform="translate(390, 100) scale(0.7) rotate(25)" opacity="0.76">
+                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ccdbe8" stroke="#7e95a8" strokeWidth="0.8" />
+                <circle cx="-1.5" cy="3" r="0.8" fill="#1e293b" />
+                <circle cx="1.5" cy="3" r="0.8" fill="#1e293b" />
+                <path d="M -2.5 9 C -3.5 13 -2.5 16 -2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                <path d="M 0 9 C -0.5 13 0.5 17 0.5 17" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                <path d="M 2.5 9 C 1.5 13 2.5 16 2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+              </g>
+              {/* Fish School G (Central Atlantic near Equator) */}
+              <g transform="translate(420, 310) scale(0.9)" opacity="0.8">
+                <g transform="translate(0, 0)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+                <g transform="translate(10, -5) scale(0.8)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+              </g>
+              {/* Fish School H (West Pacific near Japan) */}
+              <g transform="translate(760, 160) scale(1.1)" opacity="0.75">
+                <g transform="translate(0, 0)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                </g>
+                <g transform="translate(-8, -4) scale(0.8)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
                 </g>
               </g>
             </g>

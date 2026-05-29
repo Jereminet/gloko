@@ -56,6 +56,7 @@ export default function App() {
   const [selectedCountryName, setSelectedCountryName] = useState<string>('');
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
@@ -347,10 +348,6 @@ export default function App() {
     });
   };
 
-  if (!hasLoaded) {
-    return <Loader />;
-  }
-
   // Set of unique countries visited for metrics display
   const visitedCount = new Set(contacts.map((c) => c.countryId.padStart(3, '0'))).size;
 
@@ -365,38 +362,39 @@ export default function App() {
           selectedCountryId={selectedCountryId}
           onSelectCountry={handleSelectCountry}
           countryColors={countryColors}
+          onMapLoaded={() => setIsMapLoaded(true)}
         />
       </div>
 
-      {/* Completely floating Logo & Title in top-left */}
+      {/* Absolute fullscreen loader overlay that sits on top when loading */}
+      {(!hasLoaded || !isMapLoaded) && <Loader />}
+
+      {/* Completely floating Logo & Title in top-left, encapsulated in a clean circle/capsule and using favicon for O's */}
       <div
-        className="absolute top-4 left-4 sm:top-6 sm:left-6 z-30 flex items-center gap-2.5 sm:gap-3 cursor-pointer select-none group transition-transform duration-200"
+        className="absolute top-4 left-4 sm:top-6 sm:left-6 z-30 flex items-center justify-center cursor-pointer select-none bg-white/95 backdrop-blur-sm px-5 py-2.5 sm:px-6 sm:py-3 rounded-full border border-slate-200/80 shadow-[0_4px_12px_rgba(15,23,42,0.08),inset_0_-1.5px_3px_rgba(0,0,0,0.03)] hover:shadow-[0_6px_16px_rgba(15,23,42,0.14)] hover:bg-slate-50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 group"
         onClick={() => {
-          handleSelectCountry(null, '');
-          mapRef.current?.resetView?.();
+          // Trigger immersive loading screen transition before centering
+          setHasLoaded(false);
+          setTimeout(() => {
+            handleSelectCountry(null, '');
+            mapRef.current?.resetView?.();
+            setHasLoaded(true);
+          }, 1250);
         }}
-        title="View overall statistics"
+        title="Reset map view and view overall statistics"
       >
-        <div 
-          className="w-11 h-11 sm:w-13 sm:h-13 flex items-center justify-center bg-white/85 backdrop-blur-md rounded-2xl border border-white/90 shadow-[0_6px_16px_rgba(15,23,42,0.18),inset_0_-2px_4px_rgba(0,0,0,0.06),0_1.5px_2px_rgba(255,255,255,0.8)] group-hover:shadow-[0_8px_24px_rgba(15,23,42,0.26),inset_0_-2px_4px_rgba(0,0,0,0.06)] group-hover:scale-108 group-hover:rotate-3 transition-all duration-300"
+        <span 
+          className="text-xl sm:text-2xl font-sans font-semibold uppercase tracking-wider text-slate-800 flex items-center select-none"
         >
-          <img 
-            src="/favicon.png" 
-            alt="Gloko Logo" 
-            className="w-8.5 h-8.5 sm:w-10 sm:h-10 object-contain"
-          />
-        </div>
-        <h1 
-          className="text-3xl sm:text-[44px] leading-none font-sans font-black tracking-widest uppercase italic select-none group-hover:scale-102 transition-transform duration-200"
-          style={{
-            WebkitTextStroke: '0.65px #000000',
-            WebkitTextFillColor: '#ffffff',
-            color: '#ffffff',
-            textShadow: '2px 2.5px 0px rgba(0, 0, 0, 0.15)'
-          }}
-        >
-          GLOKO
-        </h1>
+          GL
+          <span className="inline-flex items-center justify-center h-[0.74em] w-[0.74em] mx-[0.05em] align-middle mt-[-0.08em] select-none pointer-events-none">
+            <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none" />
+          </span>
+          K
+          <span className="inline-flex items-center justify-center h-[0.74em] w-[0.74em] mx-[0.05em] align-middle mt-[-0.08em] select-none pointer-events-none">
+            <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none" />
+          </span>
+        </span>
       </div>
 
       {/* Floating Action Header Panel (User Profile bubble on top-right) */}
