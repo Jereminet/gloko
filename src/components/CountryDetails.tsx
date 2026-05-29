@@ -42,16 +42,11 @@ export default function CountryDetails({
     (c) => c.countryId === countryId || c.countryId.padStart(3, '0') === countryId.padStart(3, '0')
   );
 
-  // Filter displayed contacts based on user's query search inside country details
+  // Filter displayed contacts based on user's query search inside country details - strictly limited to the name of the friend
   const displayedContacts = countryContacts.filter((c) => {
     if (!friendSearchQuery.trim()) return true;
     const q = friendSearchQuery.toLowerCase();
-    return (
-      c.name.toLowerCase().includes(q) ||
-      (c.city && c.city.toLowerCase().includes(q)) ||
-      (c.notes && c.notes.toLowerCase().includes(q)) ||
-      (c.contactInfo && c.contactInfo.toLowerCase().includes(q))
-    );
+    return c.name.toLowerCase().includes(q);
   });
 
   const getNiceDefaultColorForCountry = (id: string) => {

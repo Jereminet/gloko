@@ -814,38 +814,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           style={{ pointerEvents: 'auto' }}
         >
           <defs>
-            {/* Elegant Nautical Sea Ocean pattern with waves, miniature boats, and fish */}
-            <pattern id="water-grid" width="120" height="120" patternUnits="userSpaceOnUse">
-              <rect width="120" height="120" fill="#d4e5f7" />
-              
-              {/* Soft wave ripples */}
-              <path d="M 15 15 Q 18 12 21 15 M 75 75 Q 78 72 81 75 M 100 40 Q 103 37 106 40 M 35 95 Q 38 92 41 95" stroke="#9bbce0" strokeWidth="0.85" strokeLinecap="round" fill="none" opacity="0.65" />
-              
-              {/* Elegant paper-white miniature sailing boat */}
-              <g transform="translate(48, 42)" opacity="0.8">
-                {/* Triangular Sail Left */}
-                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-                {/* Triangular Sail Right */}
-                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
-                {/* Sailboat Hull */}
-                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
-                {/* Mast */}
-                <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
-                {/* Little wave ripple under the boat */}
-                <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
-              </g>
-
-              {/* Tiny swimming fish A */}
-              <g transform="translate(85, 20)" opacity="0.75">
-                <path d="M -6 0 Q -1 -4 2 0 L 5 -3 L 5 3 L 2 0 Q -1 4 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
-              </g>
-
-              {/* Tiny swimming fish B */}
-              <g transform="translate(20, 75)" opacity="0.75">
-                <path d="M -6 0 Q -1 -4 2 0 L 5 -3 L 5 3 L 2 0 Q -1 4 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" transform="scale(-1, 1)" />
-              </g>
-            </pattern>
-
             {/* Handcrafted sand/eggshall/paper grain land pattern overlay */}
             <pattern id="land-texture" width="24" height="24" patternUnits="userSpaceOnUse">
               <circle cx="3" cy="3" r="0.6" fill="#8c7755" opacity="0.10" />
@@ -862,19 +830,115 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
             }}
             transform={`translate(${position.x}, ${position.y}) scale(${zoom})`}
           >
-            {/* Ocean / Background styling (Textured wave pattern background) */}
+            {/* Ocean / Background styling (Solid antique sea color) */}
             <rect
               width={width * 3}
               height={height * 3}
               x={-width}
               y={-height}
-              fill="url(#water-grid)"
+              fill="#d4e5f7"
               onClick={() => {
                 onSelectCountry(null, '');
                 setMobileHoveredId(null);
                 setHoveredCountry(null);
               }}
             />
+
+            {/* Handcrafted Non-Repeating Ocean Decorations: waves, sailboat, submarine, squid & fish */}
+            <g id="ocean-decorations">
+              {/* Waves */}
+              <g transform="translate(120, 150)" opacity="0.65">
+                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </g>
+              <g transform="translate(280, 260)" opacity="0.65">
+                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </g>
+              <g transform="translate(910, 180)" opacity="0.65">
+                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </g>
+              <g transform="translate(880, 450)" opacity="0.65">
+                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </g>
+              <g transform="translate(450, 530)" opacity="0.65">
+                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </g>
+              <g transform="translate(520, 60)" opacity="0.65">
+                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </g>
+
+              {/* Miniature Sailboat 1 (North Atlantic) */}
+              <g transform="translate(320, 180)" opacity="0.8">
+                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
+                <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
+              </g>
+
+              {/* Miniature Sailboat 2 (South Indian Ocean) */}
+              <g transform="translate(740, 440)" opacity="0.8">
+                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
+                <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
+                <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
+              </g>
+
+              {/* Miniature Submarine (South Pacific) */}
+              <g transform="translate(180, 420)" opacity="0.8">
+                <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#9bbad6" stroke="#5d7b96" strokeWidth="0.8" />
+                <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#7594b0" stroke="#5d7b96" strokeWidth="0.7" />
+                <line x1="-12" y1="-2" x2="-12" y2="2" stroke="#5d7b96" strokeWidth="0.8" />
+                <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#9bbad6" stroke="#5d7b96" strokeWidth="0.8" />
+                <path d="M 1 -11 L 1 -6" fill="none" stroke="#5d7b96" strokeWidth="0.8" strokeLinecap="round" />
+                <path d="M 1 -11 L 4 -11" fill="none" stroke="#5d7b96" strokeWidth="0.8" strokeLinecap="round" />
+                <circle cx="-3" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
+                <circle cx="2" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
+                <circle cx="7" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
+                {/* trailing bubbles */}
+                <circle cx="-19" cy="-1" r="0.75" fill="#ffffff" opacity="0.7" />
+                <circle cx="-23" cy="-3" r="1" fill="#ffffff" opacity="0.5" />
+              </g>
+
+              {/* Giant/Cute Squid (Indian Ocean, near equator) */}
+              <g transform="translate(580, 350)" opacity="0.75">
+                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
+                <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
+                <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
+                <path d="M -5 -1 L -9 -3 L -5 -4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.7" />
+                <path d="M 5 -1 L 9 -3 L 5 -4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.7" />
+                <path d="M -2.5 9 Q -4 14 -2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
+                <path d="M -1 9 Q -1.5 15 -0.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
+                <path d="M 1 9 Q 1.5 15 0.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
+                <path d="M 2.5 9 Q 4 14 2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
+              </g>
+
+              {/* Fish School A (South Atlantic) */}
+              <g transform="translate(440, 460)" opacity="0.8">
+                <g transform="translate(0, 0)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                </g>
+                <g transform="translate(12, 5) scale(0.8)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                </g>
+                <g transform="translate(6, -7) scale(0.9)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                </g>
+              </g>
+
+              {/* Fish School B (North Pacific) */}
+              <g transform="translate(100, 220)" opacity="0.8">
+                <g transform="translate(0, 0) scale(-1, 1)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                </g>
+                <g transform="translate(12, 6) scale(-0.8, 0.8)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                </g>
+                <g transform="translate(6, -8) scale(-0.9, 0.9)">
+                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                </g>
+              </g>
+            </g>
  
             {/* Render Country Paths with Double-Layer Texture overlays */}
             {geoData.features.map((feature: any) => {

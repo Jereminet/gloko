@@ -387,9 +387,9 @@ export default function App() {
           />
         </div>
         <h1 
-          className="text-3xl sm:text-[44px] leading-none font-black tracking-widest uppercase italic font-fancy select-none group-hover:scale-102 transition-transform duration-200 font-fancy"
+          className="text-3xl sm:text-[44px] leading-none font-sans font-black tracking-widest uppercase italic select-none group-hover:scale-102 transition-transform duration-200"
           style={{
-            WebkitTextStroke: '1px #000000',
+            WebkitTextStroke: '0.65px #000000',
             WebkitTextFillColor: '#ffffff',
             color: '#ffffff',
             textShadow: '2px 2.5px 0px rgba(0, 0, 0, 0.15)'
