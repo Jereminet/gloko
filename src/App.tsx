@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Contact } from './types';
 import WorldMap from './components/WorldMap';
 import CountryDetails from './components/CountryDetails';
+import Loader from './components/Loader';
 import { Globe, RefreshCw, Trash2, Heart, Download } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db, googleProvider, signInWithPopup, signOut, OperationType, handleFirestoreError } from './firebase';
@@ -47,6 +48,7 @@ const DEFAULT_DEMO_CONTACTS: Contact[] = [
 ];
 
 export default function App() {
+  const mapRef = useRef<any>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -220,7 +222,7 @@ export default function App() {
   };
 
   // Add Contact
-  const handleAddContact = async (contactData: Omit<Contact, 'id' | 'createdAt'>) => {
+  const handleAddContact = async (contactData: Omit<Contact, 'id' | 'createdAt'>): Promise<string> => {
     const contactId = `contact-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const createdAt = new Date().toISOString();
 
@@ -246,6 +248,7 @@ export default function App() {
       const updated = [newContact, ...contacts];
       saveAndSyncContacts(updated);
     }
+    return contactId;
   };
 
   // Update Contact
@@ -268,8 +271,8 @@ export default function App() {
   const handleDeleteContact = (id: string) => {
     setConfirmConfig({
       isOpen: true,
-      title: 'Delete Connection',
-      message: 'Are you sure you want to delete this connection? Doing so will permanently remove their records from your travel map.',
+      title: 'Remove Friend',
+      message: 'Are you sure you want to remove this friend? Doing so will permanently remove their records from your travel map.',
       confirmLabel: 'Delete',
       isDestructive: true,
       onConfirm: async () => {
@@ -309,7 +312,7 @@ export default function App() {
       isOpen: true,
       title: 'Reset Map Data',
       message: user 
-        ? 'Are you sure you want to reset your travel network? This will clear all custom database entries, clear custom colors, and restore the initial example contacts.'
+        ? 'Are you sure you want to reset your travel network? This will clear all custom database entries, clear custom colors, and restore the initial example friends.'
         : 'Are you sure you want to reset your travel network? This will restore the initial examples, clear all custom colors, and clear all custom entries!',
       confirmLabel: 'Reset Everything',
       isDestructive: true,
@@ -345,12 +348,7 @@ export default function App() {
   };
 
   if (!hasLoaded) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans text-slate-800">
-        <div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-600 border-t-transparent mb-4" />
-        <h3 className="text-sm font-semibold text-slate-600">Loading Traveler Passport...</h3>
-      </div>
-    );
+    return <Loader />;
   }
 
   // Set of unique countries visited for metrics display
@@ -362,6 +360,7 @@ export default function App() {
       {/* Immersive Map Background Layer */}
       <div className="absolute inset-0 w-full h-full z-0">
         <WorldMap
+          ref={mapRef}
           contacts={contacts}
           selectedCountryId={selectedCountryId}
           onSelectCountry={handleSelectCountry}
@@ -374,6 +373,7 @@ export default function App() {
         className="absolute top-4 left-4 sm:top-6 sm:left-6 z-30 flex items-center gap-2.5 sm:gap-3 cursor-pointer select-none group transition-transform duration-200"
         onClick={() => {
           handleSelectCountry(null, '');
+          mapRef.current?.resetView?.();
         }}
         title="View overall statistics"
       >
@@ -387,12 +387,15 @@ export default function App() {
           />
         </div>
         <h1 
-          className="text-2xl sm:text-3.5xl font-black tracking-tight text-slate-900 select-none group-hover:scale-102 transition-transform duration-200"
+          className="text-3xl sm:text-[44px] leading-none font-black tracking-widest uppercase italic font-fancy select-none group-hover:scale-102 transition-transform duration-200 font-fancy"
           style={{
-            textShadow: '0 1px 0 #ffffff, 1px 1.5px 0 #cbd5e1, 1.8px 3px 0 #aec1d8, 2.5px 4.5px 4px rgba(15, 23, 42, 0.22), 3.5px 6.5px 12px rgba(15, 23, 42, 0.12)'
+            WebkitTextStroke: '1px #000000',
+            WebkitTextFillColor: '#ffffff',
+            color: '#ffffff',
+            textShadow: '2px 2.5px 0px rgba(0, 0, 0, 0.15)'
           }}
         >
-          Gloko
+          GLOKO
         </h1>
       </div>
 

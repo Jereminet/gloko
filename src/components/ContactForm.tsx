@@ -24,6 +24,7 @@ export default function ContactForm({
   const [contactInfo, setContactInfo] = useState('');
   const [notes, setNotes] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -32,6 +33,7 @@ export default function ContactForm({
 
   // Populate data if editing
   useEffect(() => {
+    setIsSubmitting(false);
     if (editingContact) {
       setName(editingContact.name);
       setCity(editingContact.city || '');
@@ -97,7 +99,7 @@ export default function ContactForm({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!name.trim()) {
@@ -105,16 +107,24 @@ export default function ContactForm({
       return;
     }
 
-    onSave({
-      ...(editingContact ? { id: editingContact.id, createdAt: editingContact.createdAt } : {}),
-      name: name.trim(),
-      countryId,
-      countryName,
-      city: city.trim() || '',
-      contactInfo: contactInfo.trim() || '',
-      notes: notes.trim() || '',
-      photoUrl: photoUrl || undefined,
-    });
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      await onSave({
+        ...(editingContact ? { id: editingContact.id, createdAt: editingContact.createdAt } : {}),
+        name: name.trim(),
+        countryId,
+        countryName,
+        city: city.trim() || '',
+        contactInfo: contactInfo.trim() || '',
+        notes: notes.trim() || '',
+        photoUrl: photoUrl || undefined,
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Error saving. Please try again.');
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -279,11 +289,24 @@ export default function ContactForm({
           </button>
           <button
             type="submit"
-            disabled={isProcessingImage}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white rounded-full text-xs font-sans font-semibold shadow-md transition-all flex items-center gap-1.5"
+            disabled={isProcessingImage || isSubmitting}
+            className={`px-4 py-2 text-white rounded-full text-xs font-sans font-semibold shadow-md transition-all flex items-center gap-1.5 cursor-pointer ${
+              isSubmitting 
+                ? 'bg-emerald-600 hover:bg-emerald-700 animate-pulse' 
+                : 'bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-205'
+            }`}
           >
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            <span>{editingContact ? 'Save Changes' : 'Record Profile'}</span>
+            {isSubmitting ? (
+              <>
+                <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>{editingContact ? 'Saving Changes...' : 'Adding Friend...'}</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>{editingContact ? 'Save Changes' : 'Add Travel Friend'}</span>
+              </>
+            )}
           </button>
         </div>
       </form>

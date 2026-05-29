@@ -8,6 +8,7 @@ interface ContactCardProps {
   contact: Contact;
   onEdit: (contact: Contact) => void;
   onDelete: (id: string) => void;
+  shouldShake?: boolean;
 }
 
 // Generate a deterministic soft pastel background gradient based on name string
@@ -67,12 +68,13 @@ export default function ContactCard({
   contact,
   onEdit,
   onDelete,
+  shouldShake = false,
 }: ContactCardProps) {
   const initial = contact.name.trim().charAt(0).toUpperCase() || '?';
   const countryInfo = getCountryInfo(contact.countryId);
 
   return (
-    <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm hover:border-indigo-200 transition-all flex flex-col gap-3 group relative text-slate-800">
+    <div className={`bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm hover:border-indigo-200 transition-all flex flex-col gap-3 group relative text-slate-800 ${shouldShake ? 'glow-animation ring-2 ring-indigo-500 shadow-md transform' : ''}`}>
       {/* Action Buttons: Float / Hover styled */}
       <div className="absolute top-3 right-3 flex gap-1 opacity-0 md:group-hover:opacity-100 transition-opacity flex-shrink-0">
         <button

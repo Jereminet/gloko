@@ -1,10 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Paytone+One&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-fancy: "Paytone One", sans-serif;
 }
 
 /* Custom scrollbar adjustments for premium touch */
@@ -38,4 +39,24 @@
 
 .dark .map-country:hover {
   filter: brightness(1.1);
+}
+
+/* Golden/indigo glowing ring/halo animation for newly added contact */
+@keyframes glowHalo {
+  0% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.9), 0 0 0 0 rgba(245, 158, 11, 0.7);
+    border-color: rgba(99, 102, 241, 1);
+  }
+  50% {
+    box-shadow: 0 0 20px 8px rgba(99, 102, 241, 0.6), 0 0 32px 16px rgba(245, 158, 11, 0.4);
+    border-color: rgba(245, 158, 11, 1);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0), 0 0 0 0 rgba(245, 158, 11, 0);
+    border-color: rgba(226, 232, 240, 1);
+  }
+}
+
+.glow-animation {
+  animation: glowHalo 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

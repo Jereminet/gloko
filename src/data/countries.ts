@@ -33,6 +33,7 @@ export const COUNTRY_LIST: CountryInfo[] = [
   { id: "116", name: "Cambodia", code: "KH", flag: "🇰🇭", continent: "Asia" },
   { id: "120", name: "Cameroon", code: "CM", flag: "🇨🇲", continent: "Africa" },
   { id: "124", name: "Canada", code: "CA", flag: "🇨🇦", continent: "North America" },
+  { id: "132", name: "Cape Verde", code: "CV", flag: "🇨🇻", continent: "Africa" },
   { id: "140", name: "Central African Republic", code: "CF", flag: "🇨🇫", continent: "Africa" },
   { id: "148", name: "Chad", code: "TD", flag: "🇹🇩", continent: "Africa" },
   { id: "152", name: "Chile", code: "CL", flag: "🇨🇱", continent: "South America" },
@@ -40,6 +41,7 @@ export const COUNTRY_LIST: CountryInfo[] = [
   { id: "170", name: "Colombia", code: "CO", flag: "🇨🇴", continent: "South America" },
   { id: "178", name: "Congo", code: "CG", flag: "🇨🇬", continent: "Africa" },
   { id: "180", name: "Democratic Republic of the Congo", code: "CD", flag: "🇨🇩", continent: "Africa" },
+  { id: "174", name: "Comoros", code: "KM", flag: "🇰🇲", continent: "Africa" },
   { id: "188", name: "Costa Rica", code: "CR", flag: "🇨🇷", continent: "North America" },
   { id: "384", name: "Ivory Coast", code: "CI", flag: "🇨🇮", continent: "Africa" },
   { id: "191", name: "Croatia", code: "HR", flag: "🇭🇷", continent: "Europe" },
@@ -48,6 +50,7 @@ export const COUNTRY_LIST: CountryInfo[] = [
   { id: "203", name: "Czech Republic", code: "CZ", flag: "🇨🇿", continent: "Europe" },
   { id: "208", name: "Denmark", code: "DK", flag: "🇩🇰", continent: "Europe" },
   { id: "262", name: "Djibouti", code: "DJ", flag: "🇩🇯", continent: "Africa" },
+  { id: "818", name: "Egypt", code: "EG", flag: "🇪🇬", continent: "Africa" },
   { id: "214", name: "Dominican Republic", code: "DO", flag: "🇩🇴", continent: "North America" },
   { id: "218", name: "Ecuador", code: "EC", flag: "🇪🇨", continent: "South America" },
   { id: "222", name: "El Salvador", code: "SV", flag: "🇸🇻", continent: "North America" },
@@ -66,6 +69,7 @@ export const COUNTRY_LIST: CountryInfo[] = [
   { id: "300", name: "Greece", code: "GR", flag: "🇬🇷", continent: "Europe" },
   { id: "320", name: "Guatemala", code: "GT", flag: "🇬🇹", continent: "North America" },
   { id: "324", name: "Guinea", code: "GN", flag: "🇬🇳", continent: "Africa" },
+  { id: "624", name: "Guinea-Bissau", code: "GW", flag: "🇬🇼", continent: "Africa" },
   { id: "328", name: "Guyana", code: "GY", flag: "🇬🇾", continent: "South America" },
   { id: "332", name: "Haiti", code: "HT", flag: "🇭🇹", continent: "North America" },
   { id: "340", name: "Honduras", code: "HN", flag: "🇭🇳", continent: "North America" },
@@ -100,6 +104,7 @@ export const COUNTRY_LIST: CountryInfo[] = [
   { id: "458", name: "Malaysia", code: "MY", flag: "🇲🇾", continent: "Asia" },
   { id: "466", name: "Mali", code: "ML", flag: "🇲🇱", continent: "Africa" },
   { id: "478", name: "Mauritania", code: "MR", flag: "🇲🇷", continent: "Africa" },
+  { id: "480", name: "Mauritius", code: "MU", flag: "🇲🇺", continent: "Africa" },
   { id: "484", name: "Mexico", code: "MX", flag: "🇲🇽", continent: "North America" },
   { id: "498", name: "Moldova", code: "MD", flag: "🇲🇩", continent: "Europe" },
   { id: "496", name: "Mongolia", code: "MN", flag: "🇲🇳", continent: "Asia" },
@@ -138,10 +143,13 @@ export const COUNTRY_LIST: CountryInfo[] = [
   { id: "706", name: "Somalia", code: "SO", flag: "🇸🇴", continent: "Africa" },
   { id: "710", name: "South Africa", code: "ZA", flag: "🇿🇦", continent: "Africa" },
   { id: "728", name: "South Sudan", code: "SS", flag: "🇸🇸", continent: "Africa" },
+  { id: "678", name: "Sao Tome and Principe", code: "ST", flag: "🇸🇹", continent: "Africa" },
+  { id: "690", name: "Seychelles", code: "SC", flag: "🇸🇨", continent: "Africa" },
   { id: "724", name: "Spain", code: "ES", flag: "🇪🇸", continent: "Europe" },
   { id: "144", name: "Sri Lanka", code: "LK", flag: "🇱🇰", continent: "Asia" },
   { id: "736", name: "Sudan", code: "SD", flag: "🇸🇩", continent: "Africa" },
   { id: "740", name: "Suriname", code: "SR", flag: "🇸🇷", continent: "South America" },
+  { id: "748", name: "Eswatini", code: "SZ", flag: "🇸🇿", continent: "Africa" },
   { id: "752", name: "Sweden", code: "SE", flag: "🇸🇪", continent: "Europe" },
   { id: "756", name: "Switzerland", code: "CH", flag: "🇨🇭", continent: "Europe" },
   { id: "760", name: "Syria", code: "SY", flag: "🇸🇾", continent: "Asia" },
@@ -187,5 +195,15 @@ export function getCountryName(id: string): string {
 
 export function getCountryInfo(id: string): CountryInfo | undefined {
   const paddedId = id.toString().padStart(3, '0');
-  return COUNTRY_BY_ID[paddedId] || COUNTRY_BY_ID[id];
+  const found = COUNTRY_BY_ID[paddedId] || COUNTRY_BY_ID[id];
+  if (found) return found;
+  
+  // Dynamic fallback for any unlisted map elements so they remain interactive
+  return {
+    id: paddedId,
+    name: `Country ${paddedId}`,
+    code: "UN",
+    flag: "🗺️",
+    continent: "Unknown"
+  };
 }

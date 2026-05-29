@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useImperativeHandle, forwardRef } from 'react';
 import * as d3 from 'd3';
 import { feature } from 'topojson-client';
 import { COUNTRY_BY_ID, getCountryInfo, COUNTRY_LIST } from '../data/countries';
@@ -12,12 +12,12 @@ interface WorldMapProps {
   countryColors?: Record<string, string>;
 }
 
-export default function WorldMap({
+const WorldMap = forwardRef<any, WorldMapProps>(({
   contacts,
   selectedCountryId,
   onSelectCountry,
   countryColors = {},
-}: WorldMapProps) {
+}, ref) => {
   const [geoData, setGeoData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,19 +26,14 @@ export default function WorldMap({
   const width = 960;
   const height = 500;
 
-  // Track map transform (Zoom/Pan state)
-  const [zoom, setZoom] = useState(1);
+  // Track map transform (Zoom/Pan state) focusing on Belgium
+  const [zoom, setZoom] = useState(1.2);
   const [position, setPosition] = useState({ x: 0, y: 0 });
 
-  // Auto-fit and center nicely on mobile mount
+  // Center nicely on Belgium on mount
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const isMobile = window.innerWidth < 640;
-      if (isMobile) {
-        setZoom(1.85);
-        setPosition({ x: -280, y: -45 });
-      }
-    }
+    setZoom(1.2);
+    setPosition({ x: 0, y: 0 });
   }, []);
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
@@ -67,11 +62,11 @@ export default function WorldMap({
   const [mobileHoveredId, setMobileHoveredId] = useState<string | null>(null);
 
   // Calculate contact counts by country ID (padded)
-  const contactCounts = contacts.reduce<Record<string, number>>((acc, c) => {
+  const contactCounts: Record<string, number> = {};
+  contacts.forEach((c) => {
     const padded = c.countryId.padStart(3, '0');
-    acc[padded] = (acc[padded] || 0) + 1;
-    return acc;
-  }, {});
+    contactCounts[padded] = (contactCounts[padded] || 0) + 1;
+  });
 
   // Fetch and parse world map boundaries with multiple CDN fallbacks
   useEffect(() => {
@@ -113,10 +108,11 @@ export default function WorldMap({
     tryFetch(0);
   }, []);
 
-  // Configure projection: GeoNaturalEarth1 looks extremely elegant
+  // Configure projection: GeoNaturalEarth1 centered on Belgium
   const projection = d3
     .geoNaturalEarth1()
-    .scale(170)
+    .center([4.4699, 50.5039])
+    .scale(190)
     .translate([width / 2, height / 2.3]);
 
   const pathGenerator = d3.geoPath().projection(projection);
@@ -150,6 +146,51 @@ export default function WorldMap({
     return `hsl(${hue}, 75%, 72%)`; // Soft beautiful natural pastel
   };
 
+  // Expose imperative handle to allow resetting view from parent
+  useImperativeHandle(ref, () => ({
+    resetView: () => {
+      handleReset();
+    }
+  }));
+
+  // Prevent map from scrolling away/indefinitely by locking edges beautifully based on global size
+  const limitPosition = (pos: { x: number; y: number }, currentZoom: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const viewW = rect ? rect.width : width;
+    const viewH = rect ? rect.height : height;
+
+    const mapW = width * currentZoom;
+    const mapH = height * currentZoom;
+
+    // Determine bounds such that the map remains beautifully centered when smaller than screen,
+    // and cannot overflow or slide off the canvas when zoomed in.
+    let minX, maxX, minY, maxY;
+
+    if (mapW > viewW) {
+      // Allow padding of 150px of visible ocean lines
+      minX = viewW - mapW - 150;
+      maxX = 150;
+    } else {
+      const defaultX = (viewW - mapW) / 2;
+      minX = defaultX - 80;
+      maxX = defaultX + 80;
+    }
+
+    if (mapH > viewH) {
+      minY = viewH - mapH - 150;
+      maxY = 150;
+    } else {
+      const defaultY = (viewH - mapH) / 2;
+      minY = defaultY - 80;
+      maxY = defaultY + 80;
+    }
+
+    return {
+      x: Math.max(minX, Math.min(pos.x, maxX)),
+      y: Math.max(minY, Math.min(pos.y, maxY)),
+    };
+  };
+
   // Zoom handlers
   const scaleRelative = (factor: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -157,35 +198,43 @@ export default function WorldMap({
     const centerY = rect ? rect.height / 2 : height / 2;
     
     const nextZoom = Math.max(0.8, Math.min(zoom * factor, 12));
-    setPosition((prev) => ({
-      x: centerX - (nextZoom / zoom) * (centerX - prev.x),
-      y: centerY - (nextZoom / zoom) * (centerY - prev.y),
-    }));
+    const nextPos = {
+      x: centerX - (nextZoom / zoom) * (centerX - position.x),
+      y: centerY - (nextZoom / zoom) * (centerY - position.y),
+    };
+    setPosition(limitPosition(nextPos, nextZoom));
     setZoom(nextZoom);
   };
 
   const handleZoomIn = () => scaleRelative(1.5);
   const handleZoomOut = () => scaleRelative(1 / 1.5);
   const handleReset = () => {
-    setZoom(1);
+    setZoom(1.2);
     setPosition({ x: 0, y: 0 });
   };
 
-  // Pan handlers (Mouse + Touch support for mobile devices)
+  // Pan handlers (Mouse + Touch support with focal-centered touch coordinate pinch & automatic release of selection on movement/pan)
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (mobileHoveredId) return; // Map is locked!
     if (e.button !== 0) return; // Only left click
+    if (mobileHoveredId) {
+      setMobileHoveredId(null);
+      setHoveredCountry(null);
+    }
     setIsDragging(true);
     dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (mobileHoveredId) return; // Map is locked!
     if (!isDragging) return;
-    setPosition({
+    if (mobileHoveredId) {
+      setMobileHoveredId(null);
+      setHoveredCountry(null);
+    }
+    const nextPos = {
       x: e.clientX - dragStart.current.x,
       y: e.clientY - dragStart.current.y,
-    });
+    };
+    setPosition(limitPosition(nextPos, zoom));
   };
 
   const handleMouseUp = () => {
@@ -193,7 +242,10 @@ export default function WorldMap({
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (mobileHoveredId) return; // Map is locked!
+    if (mobileHoveredId) {
+      setMobileHoveredId(null);
+      setHoveredCountry(null);
+    }
     if (e.touches.length === 2) {
       // Two fingers: pinch zoom
       setIsDragging(false); // Disable dragging
@@ -223,7 +275,10 @@ export default function WorldMap({
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (mobileHoveredId) return; // Map is locked!
+    if (mobileHoveredId) {
+      setMobileHoveredId(null);
+      setHoveredCountry(null);
+    }
     if (e.touches.length === 2 && touchStartDist.current !== null) {
       const t1 = e.touches[0];
       const t2 = e.touches[1];
@@ -239,18 +294,21 @@ export default function WorldMap({
       const mid = touchStartMidpoint.current;
       const initZoom = touchStartZoom.current;
       
-      // Calculate focal centered zoom point using original map position and current scale
-      setPosition({
+      // Compute accurate zoom relative to the pinch gesture's dynamic touch midpoint
+      const nextPos = {
         x: mid.x - (mid.x - dragStart.current.x) * (nextZoom / initZoom),
         y: mid.y - (mid.y - dragStart.current.y) * (nextZoom / initZoom),
-      });
+      };
+      
+      setPosition(limitPosition(nextPos, nextZoom));
       setZoom(nextZoom);
     } else if (e.touches.length === 1 && isDragging) {
       const touch = e.touches[0];
-      setPosition({
+      const nextPos = {
         x: touch.clientX - dragStart.current.x,
         y: touch.clientY - dragStart.current.y,
-      });
+      };
+      setPosition(limitPosition(nextPos, zoom));
     }
   };
 
@@ -261,7 +319,10 @@ export default function WorldMap({
 
   // Extremely smooth, responsive mouse-centered focal wheel zoom
   const handleWheel = (e: React.WheelEvent) => {
-    if (mobileHoveredId) return; // Map is locked!
+    if (mobileHoveredId) {
+      setMobileHoveredId(null);
+      setHoveredCountry(null);
+    }
     e.preventDefault();
     if (loading) return;
 
@@ -274,14 +335,12 @@ export default function WorldMap({
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
     const nextZoom = Math.max(0.8, Math.min(zoom * zoomFactor, 12));
 
-    setPosition((prev) => {
-      const dx = mouseX - prev.x;
-      const dy = mouseY - prev.y;
-      return {
-        x: mouseX - dx * (nextZoom / zoom),
-        y: mouseY - dy * (nextZoom / zoom),
-      };
-    });
+    const nextPos = {
+      x: mouseX - (mouseX - position.x) * (nextZoom / zoom),
+      y: mouseY - (mouseY - position.y) * (nextZoom / zoom),
+    };
+
+    setPosition(limitPosition(nextPos, nextZoom));
     setZoom(nextZoom);
   };
 
@@ -408,6 +467,14 @@ export default function WorldMap({
       )
     : [];
 
+  const filteredFriends = searchQuery.trim()
+    ? contacts.filter((contact) =>
+        contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (contact.city && contact.city.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (contact.notes && contact.notes.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : [];
+
   const handleSearchSelect = (countryId: string, countryName: string) => {
     onSelectCountry(countryId, countryName);
     setSearchQuery('');
@@ -464,11 +531,11 @@ export default function WorldMap({
         <div 
           onClick={() => setShowStatsDetail((prev) => !prev)}
           className="bg-white/95 backdrop-blur-sm px-4 py-3.5 rounded-2xl border border-slate-200/80 shadow-md flex flex-col gap-1 select-none font-sans cursor-pointer hover:bg-slate-50 transition-all hover:shadow-lg active:scale-[0.98]"
-          title="Click to view/hide friends directory"
+          title="Click to view/hide friends book"
         >
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-[9px] font-bold text-indigo-650 uppercase tracking-widest leading-none">
-              <span>📊</span> Statistics
+              <span>📖</span> Friends Book
             </span>
             <span className="text-[8px] text-slate-400 font-medium font-sans bg-slate-100 px-1 py-0.5 rounded">
               {showStatsDetail ? 'Hide list' : 'Click to expand'}
@@ -509,7 +576,7 @@ export default function WorldMap({
             <div className="overflow-y-auto flex-grow divide-y divide-slate-100/60 p-1 bg-white">
               {contacts.length === 0 ? (
                 <div className="py-8 px-4 text-center text-[11px] text-slate-400">
-                  You don't have any connections recorded yet. Click a country to add!
+                  You don't have any friends recorded yet. Click a country to add!
                 </div>
               ) : (
                 Object.keys(contactCounts).map((paddedId) => {
@@ -584,7 +651,7 @@ export default function WorldMap({
           <div className="relative">
             <input
               type="text"
-              placeholder="Search country..."
+              placeholder="Search country or friend name..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -597,33 +664,71 @@ export default function WorldMap({
           </div>
 
           {showDropdown && searchQuery.trim() && (
-            <div className="absolute left-0 right-0 mt-1.5 max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg z-50 divide-y divide-slate-100">
-              {filteredCountries.length > 0 ? (
-                filteredCountries.map((country) => {
-                  const count = contactCounts[country.id] || 0;
-                  return (
-                    <button
-                      key={country.id}
-                      onClick={() => handleSearchSelect(country.id, country.name)}
-                      className="w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors font-sans cursor-pointer"
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="text-base select-none">{country.flag}</span>
-                        <span className="font-semibold text-slate-700">{country.name}</span>
-                      </span>
-                      {count > 0 ? (
-                        <span className="bg-indigo-50 text-indigo-650 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono">
-                          {count}
+            <div className="absolute left-0 right-0 mt-1.5 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg z-50 divide-y divide-slate-100/90">
+              {filteredCountries.length > 0 && (
+                <div>
+                  <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 font-sans">
+                    Countries ({filteredCountries.length})
+                  </div>
+                  {filteredCountries.map((country) => {
+                    const count = contactCounts[country.id] || 0;
+                    return (
+                      <button
+                        key={country.id}
+                        onClick={() => handleSearchSelect(country.id, country.name)}
+                        className="w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors font-sans cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="text-base select-none">{country.flag}</span>
+                          <span className="font-semibold text-slate-700">{country.name}</span>
                         </span>
-                      ) : (
-                        <span className="text-[9px] text-slate-400">0</span>
-                      )}
-                    </button>
-                  );
-                })
-              ) : (
+                        {count > 0 ? (
+                          <span className="bg-indigo-50 text-indigo-650 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono">
+                            {count}
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-slate-400">0</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {filteredFriends.length > 0 && (
+                <div>
+                  <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 font-sans">
+                    Friends ({filteredFriends.length})
+                  </div>
+                  {filteredFriends.map((friend) => {
+                    const paddedId = friend.countryId.padStart(3, '0');
+                    const country = COUNTRY_BY_ID[paddedId];
+                    const countryFlag = country?.flag || '🗺️';
+                    return (
+                      <button
+                        key={friend.id}
+                        onClick={() => handleSearchSelect(paddedId, country?.name || `Country #${paddedId}`)}
+                        className="w-full text-left px-3 py-2.5 text-xs flex flex-col gap-0.5 hover:bg-slate-50/70 transition-colors font-sans cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-800">{friend.name}</span>
+                          <span className="text-[10px] select-none flex items-center gap-1 bg-indigo-50 text-indigo-650 px-1.5 py-0.5 rounded font-bold font-sans">
+                            <span>{countryFlag}</span>
+                            <span>{country?.name || 'World'}</span>
+                          </span>
+                        </div>
+                        {friend.city && (
+                          <span className="text-[9px] text-slate-400">📍 {friend.city}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {filteredCountries.length === 0 && filteredFriends.length === 0 && (
                 <div className="py-3 px-4 text-xs text-slate-400 text-center font-sans">
-                  No countries match
+                  No country or friend matches
                 </div>
               )}
             </div>
@@ -668,7 +773,7 @@ export default function WorldMap({
         <div className="absolute bottom-3 left-3 right-3 sm:left-auto sm:bottom-4 sm:right-4 bg-white p-3 py-2.5 sm:p-3.5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-2.5 animate-pulse z-10 max-w-[calc(100vw-24px)] text-xs font-semibold text-slate-800">
           <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-indigo-600 rounded-full shrink-0 animate-ping"></div>
           <div className="truncate">
-            {COUNTRY_BY_ID[selectedCountryId]?.flag} {COUNTRY_BY_ID[selectedCountryId]?.name || 'Selected'}: {contactCounts[selectedCountryId] || 0} Contacts
+            {COUNTRY_BY_ID[selectedCountryId]?.flag} {COUNTRY_BY_ID[selectedCountryId]?.name || 'Selected'}: {contactCounts[selectedCountryId] || 0} {contactCounts[selectedCountryId] === 1 ? 'Friend' : 'Friends'}
           </div>
         </div>
       )}
@@ -698,16 +803,9 @@ export default function WorldMap({
         >
           <ZoomOut className="h-3.5 w-3.5" />
         </button>
-        <button
-          onClick={handleReset}
-          className="p-1.5 bg-white border border-slate-200 shadow-sm text-slate-600 rounded-lg hover:bg-slate-50 hover:text-slate-950 transition-colors pointer-events-auto cursor-pointer"
-          title="Reset View"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-        </button>
       </div>
 
-      {/* SVG Render Container */}
+      {/* SVG Render Container with Realistic Ocean & Ground Textures */}
       {geoData && (
         <svg
           viewBox={`0 0 ${width} ${height}`}
@@ -715,6 +813,48 @@ export default function WorldMap({
           className="w-full h-full overflow-hidden"
           style={{ pointerEvents: 'auto' }}
         >
+          <defs>
+            {/* Elegant Nautical Sea Ocean pattern with waves, miniature boats, and fish */}
+            <pattern id="water-grid" width="120" height="120" patternUnits="userSpaceOnUse">
+              <rect width="120" height="120" fill="#d4e5f7" />
+              
+              {/* Soft wave ripples */}
+              <path d="M 15 15 Q 18 12 21 15 M 75 75 Q 78 72 81 75 M 100 40 Q 103 37 106 40 M 35 95 Q 38 92 41 95" stroke="#9bbce0" strokeWidth="0.85" strokeLinecap="round" fill="none" opacity="0.65" />
+              
+              {/* Elegant paper-white miniature sailing boat */}
+              <g transform="translate(48, 42)" opacity="0.8">
+                {/* Triangular Sail Left */}
+                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
+                {/* Triangular Sail Right */}
+                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
+                {/* Sailboat Hull */}
+                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
+                {/* Mast */}
+                <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
+                {/* Little wave ripple under the boat */}
+                <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
+              </g>
+
+              {/* Tiny swimming fish A */}
+              <g transform="translate(85, 20)" opacity="0.75">
+                <path d="M -6 0 Q -1 -4 2 0 L 5 -3 L 5 3 L 2 0 Q -1 4 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+              </g>
+
+              {/* Tiny swimming fish B */}
+              <g transform="translate(20, 75)" opacity="0.75">
+                <path d="M -6 0 Q -1 -4 2 0 L 5 -3 L 5 3 L 2 0 Q -1 4 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" transform="scale(-1, 1)" />
+              </g>
+            </pattern>
+
+            {/* Handcrafted sand/eggshall/paper grain land pattern overlay */}
+            <pattern id="land-texture" width="24" height="24" patternUnits="userSpaceOnUse">
+              <circle cx="3" cy="3" r="0.6" fill="#8c7755" opacity="0.10" />
+              <circle cx="15" cy="15" r="0.6" fill="#8c7755" opacity="0.10" />
+              <circle cx="9" cy="8" r="0.5" fill="#8c7755" opacity="0.06" />
+              <circle cx="21" cy="4" r="0.5" fill="#8c7755" opacity="0.06" />
+            </pattern>
+          </defs>
+
           <g 
             style={{
               transition: isDragging ? 'none' : 'transform 320ms cubic-bezier(0.16, 1, 0.3, 1)',
@@ -722,57 +862,67 @@ export default function WorldMap({
             }}
             transform={`translate(${position.x}, ${position.y}) scale(${zoom})`}
           >
-            {/* Ocean / Background styling */}
+            {/* Ocean / Background styling (Textured wave pattern background) */}
             <rect
               width={width * 3}
               height={height * 3}
               x={-width}
               y={-height}
-              fill="transparent"
+              fill="url(#water-grid)"
               onClick={() => {
                 onSelectCountry(null, '');
                 setMobileHoveredId(null);
                 setHoveredCountry(null);
               }}
             />
-
-            {/* Render Country Paths */}
+ 
+            {/* Render Country Paths with Double-Layer Texture overlays */}
             {geoData.features.map((feature: any) => {
               if (!feature || feature.id === undefined || feature.id === null) return null;
               const rawId = feature.id.toString();
               const paddedId = rawId.padStart(3, '0');
               const pathData = pathGenerator(feature);
-
+ 
               // Check if this country path failed to generate (e.g., empty coordinates or Antarctica placeholder issue)
               if (!pathData) return null;
-
+ 
               // Antarctica (id "010" or similar) can sometimes take up too much space. We display it but can ignore details
               const isAntarctica = paddedId === '010';
               if (isAntarctica) return null;
-
+ 
               const count = contactCounts[paddedId] || 0;
               const isSelected = selectedCountryId === paddedId;
               const isMobileHovered = mobileHoveredId === paddedId;
-
+ 
               return (
-                <path
-                  key={paddedId}
-                  d={pathData}
-                  fill={getCountryColor(paddedId, count, isSelected)}
-                  stroke={isSelected ? '#4f46e5' : '#000000'}
-                  strokeWidth={isSelected ? 1.8 / zoom : (isMobileHovered ? 2.8 / zoom : 0.75 / zoom)}
-                  className="map-country select-none outline-none"
-                  style={{
-                    fill: getCountryColor(paddedId, count, isSelected),
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCountryClick(e, feature);
-                  }}
-                  onMouseEnter={(e) => handleCountryMouseEnter(e, feature)}
-                  onMouseMove={(e) => handleCountryMouseMove(e, feature)}
-                  onMouseLeave={handleCountryMouseLeave}
-                />
+                <g key={paddedId}>
+                  {/* Layer 1: Solid base country path */}
+                  <path
+                    d={pathData}
+                    fill={getCountryColor(paddedId, count, isSelected)}
+                    stroke={isSelected ? '#4f46e5' : '#1e293b'}
+                    strokeWidth={isSelected ? 1.8 / zoom : (isMobileHovered ? 2.8 / zoom : 0.75 / zoom)}
+                    className="map-country select-none outline-none"
+                    style={{
+                      fill: getCountryColor(paddedId, count, isSelected),
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCountryClick(e, feature);
+                    }}
+                    onMouseEnter={(e) => handleCountryMouseEnter(e, feature)}
+                    onMouseMove={(e) => handleCountryMouseMove(e, feature)}
+                    onMouseLeave={handleCountryMouseLeave}
+                  />
+                  {/* Layer 2: Transparent physical paper land texture overlay */}
+                  <path
+                    d={pathData}
+                    fill="url(#land-texture)"
+                    stroke="none"
+                    className="pointer-events-none select-none"
+                    style={{ opacity: isSelected ? 0.35 : 0.85 }}
+                  />
+                </g>
               );
             })}
           </g>
@@ -796,7 +946,7 @@ export default function WorldMap({
           <div className="flex items-center gap-1 text-[10px] text-slate-300 font-medium">
             <MapPin className="h-3 w-3 text-indigo-400" />
             <span>
-              {hoveredCountry.count} {hoveredCountry.count === 1 ? 'Contact' : 'Contacts'}
+              {hoveredCountry.count} {hoveredCountry.count === 1 ? 'Friend' : 'Friends'}
             </span>
           </div>
         </div>
@@ -811,4 +961,6 @@ export default function WorldMap({
       )}
     </div>
   );
-}
+});
+
+export default WorldMap;

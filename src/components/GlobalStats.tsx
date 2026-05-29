@@ -63,10 +63,10 @@ export default function GlobalStats({ contacts, onSelectCountry }: GlobalStatsPr
           <span>Dashboard summary</span>
         </div>
         <h3 className="font-sans font-semibold text-slate-800 text-base tracking-tight">
-          Your Travel Statistics
+          Your Friends Book
         </h3>
         <p className="text-[11px] text-slate-400 font-sans">
-          Your personal interactive archive of global connections and travel memories.
+          Your personal interactive archive of global friends and travel memories.
         </p>
       </div>
 
