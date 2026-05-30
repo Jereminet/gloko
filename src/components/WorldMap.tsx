@@ -142,6 +142,161 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   // Track double tap / mobile hover state
   const [mobileHoveredId, setMobileHoveredId] = useState<string | null>(null);
 
+  // States for dynamic ocean decorations and labels layout
+  const [randomDecorations, setRandomDecorations] = useState<any[]>([]);
+  const [computedOceanLabels, setComputedOceanLabels] = useState<any[]>([]);
+  const rawFeaturesRef = useRef<any[]>([]);
+
+  // Dynamically compute complete-word ocean labels with positional candidates and safety clearance
+  useEffect(() => {
+    if (!geoData || !geoData.features) return;
+
+    const isPointOnLand = (lon: number, lat: number) => {
+      // Normalize longitude to [-180, 180] for accurate spherical test
+      let normalizedLon = lon;
+      while (normalizedLon > 180) normalizedLon -= 360;
+      while (normalizedLon < -180) normalizedLon += 360;
+
+      // Use rawFeaturesRef if populated, otherwise fallback to geoData.features
+      const referenceFeatures = (rawFeaturesRef.current && rawFeaturesRef.current.length > 0)
+        ? rawFeaturesRef.current 
+        : geoData.features;
+
+      for (let i = 0; i < referenceFeatures.length; i++) {
+        const f = referenceFeatures[i];
+        if (f && d3.geoContains(f, [normalizedLon, lat])) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // Ocean icons/decorations have been completely removed per request
+    setRandomDecorations([]);
+
+    // Undivided Oceans Configuration with multiple candidate coordinates for smart fallbacks
+    const labelsStructure = [
+      {
+        id: 'arctic',
+        name: 'Arctic Ocean', // Complete full name matching 'Friends book'
+        candidates: [
+          { lon: -10, lat: 79 },
+          { lon: 0, lat: 78 },
+          { lon: 15, lat: 79 },
+          { lon: -30, lat: 77 },
+          { lon: 30, lat: 77 }
+        ]
+      },
+      {
+        id: 'pacific',
+        name: 'Pacific Ocean',
+        candidates: [
+          { lon: -150, lat: 20 },  // North Pacific spacious area
+          { lon: -140, lat: 5 },   // Centered between Hawaii & Asia
+          { lon: -125, lat: -20 }, // South Pacific spacious area
+          { lon: -160, lat: -10 },
+          { lon: -130, lat: 30 }
+        ]
+      },
+      {
+        id: 'atlantic',
+        name: 'Atlantic Ocean',
+        candidates: [
+          { lon: -38, lat: 28 },   // Perfect coordinates between the US and Spain
+          { lon: -42, lat: 26 },
+          { lon: -34, lat: 32 },
+          { lon: -44, lat: 22 },
+          { lon: -30, lat: 35 },
+          { lon: -28, lat: 15 },   // Mid-Atlantic
+          { lon: -20, lat: -22 }   // South Atlantic
+        ]
+      },
+      {
+        id: 'indian',
+        name: 'Indian Ocean',
+        candidates: [
+          { lon: 80, lat: -18 },   // South central Indian Ocean
+          { lon: 75, lat: -15 },
+          { lon: 85, lat: -22 },
+          { lon: 70, lat: -12 },
+          { lon: 90, lat: -20 }
+        ]
+      },
+      {
+        id: 'southern',
+        name: 'Southern Ocean',
+        candidates: [
+          { lon: 0, lat: -59 },    // Spacious sector
+          { lon: 20, lat: -58 },
+          { lon: 40, lat: -58 },
+          { lon: -20, lat: -58 },
+          { lon: -40, lat: -59 }
+        ]
+      }
+    ];
+
+    const labelsList: any[] = [];
+    labelsStructure.forEach((lbl) => {
+      let bestCandidate = lbl.candidates[0];
+      let foundClear = false;
+
+      // Adjust check dimensions depending on map container dimensions or zoom
+      // checkW = 85, checkH = 34 represents a very generous safety margin area in pixels
+      const checkW = 85; 
+      const checkH = 34;
+
+      for (let cIdx = 0; cIdx < lbl.candidates.length; cIdx++) {
+        const cand = lbl.candidates[cIdx];
+        const pos = projection([cand.lon, cand.lat]);
+        if (!pos) continue;
+        const [cx, cy] = pos;
+
+        // Ensure predicted label is inside reasonable screen bounds
+        if (cx < 60 || cx > width - 60 || cy < 40 || cy > height - 40) {
+          continue;
+        }
+
+        let overlaps = false;
+        // Sample points in a grid around this candidate to see if any point touches land
+        const xSamples = [-checkW/2, -checkW/4, 0, checkW/4, checkW/2];
+        const ySamples = [-checkH/2, 0, checkH/2];
+
+        for (let xi = 0; xi < xSamples.length; xi++) {
+          for (let yi = 0; yi < ySamples.length; yi++) {
+            const pt = projection.invert([cx + xSamples[xi], cy + ySamples[yi]]);
+            if (pt) {
+              if (isPointOnLand(pt[0], pt[1])) {
+                overlaps = true;
+                break;
+              }
+            }
+          }
+          if (overlaps) break;
+        }
+
+        if (!overlaps) {
+          bestCandidate = cand;
+          foundClear = true;
+          break; // Stop at first candidate that is perfectly clear!
+        }
+      }
+
+      const finalPos = projection([bestCandidate.lon, bestCandidate.lat]);
+      if (finalPos) {
+        labelsList.push({
+          id: lbl.id,
+          name: lbl.name,
+          lon: bestCandidate.lon,
+          lat: bestCandidate.lat,
+          x: finalPos[0],
+          y: finalPos[1]
+        });
+      }
+    });
+
+    setComputedOceanLabels(labelsList);
+  }, [geoData]);
+
   // Calculate contact counts by country ID (padded)
   const contactCounts: Record<string, number> = {};
   contacts.forEach((c) => {
@@ -177,6 +332,44 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           }
           // Convert TopoJSON to GeoJSON
           const countriesGeo = feature(data, data.objects.countries) as any;
+
+          // Save complete deep copy of original unmutated features for clean isPointOnLand geo contains check
+          if (countriesGeo && countriesGeo.features) {
+            rawFeaturesRef.current = JSON.parse(JSON.stringify(countriesGeo.features));
+          }
+
+          // Heal Russia (ID is "643") coordinates so they are continuous on the eastern/right side of the Mercator map 
+          // instead of splitting the Chukotka peninsula to the far left.
+          if (countriesGeo && countriesGeo.features) {
+            countriesGeo.features = countriesGeo.features.map((f: any) => {
+              const fid = f.id ? f.id.toString() : '';
+              if (fid === '643' || fid === 'RUS') {
+                const healCoordinates = (coords: any): any => {
+                  if (typeof coords[0] === 'number') {
+                    let [lon, lat] = coords;
+                    if (lon < 0) {
+                      lon += 360;
+                    }
+                    return [lon, lat];
+                  } else if (Array.isArray(coords[0])) {
+                    return coords.map(healCoordinates);
+                  }
+                  return coords;
+                };
+                if (f.geometry && f.geometry.coordinates) {
+                  return {
+                    ...f,
+                    geometry: {
+                      ...f.geometry,
+                      coordinates: healCoordinates(f.geometry.coordinates)
+                    }
+                  };
+                }
+              }
+              return f;
+            });
+          }
+
           setGeoData(countriesGeo);
           setLoading(false);
           onMapLoaded?.();
@@ -605,38 +798,38 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
         onWheel={(e) => e.stopPropagation()}
         className="absolute top-4 sm:top-6 left-4 sm:left-6 z-40 flex flex-col gap-3.5 pointer-events-auto w-64 max-w-[calc(100vw-32px)]"
       >
-        {/* GLOKO Floating Logo & Title perfectly aligned vertically */}
-        <div
-          className="flex items-center justify-start cursor-pointer select-none hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 group self-start px-4 py-1"
-          onClick={() => {
-            if (onLogoClick) {
-              onLogoClick();
-            } else {
-              onSelectCountry(null, '');
-              handleReset();
-            }
-          }}
-          title="Reset map view and view overall statistics"
-        >
-          <span 
-            className="text-xl sm:text-2xl font-sans font-extrabold uppercase tracking-widest text-[#0a1e35] flex items-center select-none drop-shadow-[0_1px_2.5px_rgba(255,255,255,1)]"
-          >
-            GL
-            <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_2px_5px_rgba(15,23,42,0.1)] p-[2.5px]">
-              <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
-            </span>
-            K
-            <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_2px_5px_rgba(15,23,42,0.1)] p-[2.5px]">
-              <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
-            </span>
-          </span>
-        </div>
-
-        {/* Unified Friends Book panel */}
+        {/* Unified Friends Book panel with integrated GLOKO logo */}
         <div 
           ref={friendsBookRef}
           className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/80 shadow-md select-none font-sans overflow-hidden transition-all flex flex-col w-full"
         >
+          {/* Integrated GLOKO Logo Block */}
+          <div
+            className="flex items-center justify-center cursor-pointer select-none border-b border-slate-100 bg-slate-50/45 hover:bg-slate-50 transition-colors py-2.5"
+            onClick={() => {
+              if (onLogoClick) {
+                onLogoClick();
+              } else {
+                onSelectCountry(null, '');
+                handleReset();
+              }
+            }}
+            title="Reset map view and view overall statistics"
+          >
+            <span 
+              className="text-lg sm:text-xl font-sans font-extrabold uppercase tracking-widest text-[#0a1e35] flex items-center select-none"
+            >
+              GL
+              <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
+                <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
+              </span>
+              K
+              <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
+                <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
+              </span>
+            </span>
+          </div>
+
           {/* Header section which expands/collapses the popup inline */}
           <div 
             onClick={() => setShowStatsDetail((prev) => !prev)}
@@ -908,353 +1101,31 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
               }}
             />
 
-            {/* Handcrafted Non-Repeating Ocean Decorations: waves, sailboat, submarine, squid & fish */}
-            <g id="ocean-decorations">
-              {/* Scattered Waves */}
-              {/* Pacific Left */}
-              <g transform="translate(60, 150)" opacity="0.65">
-                <g className="animate-wave">
-                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                </g>
-              </g>
-              <g transform="translate(270, 110)" opacity="0.65">
-                <g className="animate-wave">
-                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                </g>
-              </g>
-              <g transform="translate(80, 360)" opacity="0.65">
-                <g className="animate-wave">
-                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                </g>
-              </g>
-              <g transform="translate(290, 460)" opacity="0.65">
-                <g className="animate-wave">
-                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                </g>
-              </g>
-              {/* Atlantic Middle */}
-              <g transform="translate(370, 130)" opacity="0.65">
-                <g className="animate-wave">
-                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                </g>
-              </g>
-              <g transform="translate(480, 370)" opacity="0.65">
-                <g className="animate-wave">
-                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                </g>
-              </g>
-              {/* Indian Middle-Right */}
-              <g transform="translate(640, 260)" opacity="0.65">
-                <g className="animate-wave">
-                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                </g>
-              </g>
-              <g transform="translate(770, 320)" opacity="0.65">
-                <g className="animate-wave">
-                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                </g>
-              </g>
-              {/* Pacific Right */}
-              <g transform="translate(930, 120)" opacity="0.65">
-                <g className="animate-wave">
-                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                </g>
-              </g>
-              <g transform="translate(860, 470)" opacity="0.65">
-                <g className="animate-wave">
-                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                </g>
-              </g>
-
-              {/* SAILBOATS (Various occurrences, non-repeating positions/scales) */}
-              {/* Sailboat 1 (North Atlantic) */}
-              <g transform="translate(320, 180)" opacity="0.8">
-                <g className="animate-boat">
-                  <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
-                  <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
-                </g>
-              </g>
-              {/* Sailboat 2 (South Indian Ocean) */}
-              <g transform="translate(740, 440)" opacity="0.8">
-                <g className="animate-boat">
-                  <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
-                  <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
-                </g>
-              </g>
-              {/* Sailboat 3 (North Pacific Left, slightly rotated) */}
-              <g transform="translate(140, 110) rotate(-5)" opacity="0.75">
-                <g className="animate-boat">
-                  <path d="M -1 -10 L -1 -1 L -5 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.7" />
-                  <path d="M 1 -11 L 1 -1 L 5 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.7" />
-                  <path d="M -7 1 L 7 1 L 4.5 4.5 L -4.5 4.5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.7" />
-                  <line x1="0" y1="-11" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.7" />
-                </g>
-              </g>
-              {/* Sailboat 4 (North Pacific Right, slightly larger) */}
-              <g transform="translate(870, 140) scale(1.15)" opacity="0.8">
-                <g className="animate-boat">
-                  <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f1f5f9" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#f8fafc" stroke="#6b7280" strokeWidth="0.75" />
-                </g>
-              </g>
-
-              {/* SUBMARINES (Multiple occurrences, varied scales) */}
-              {/* Submarine 1 (South Pacific Left) */}
-              <g transform="translate(140, 440)" opacity="0.85">
-                <g className="animate-sub">
-                  <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#9bbad6" stroke="#5d7b96" strokeWidth="0.8" />
-                  <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#7594b0" stroke="#5d7b96" strokeWidth="0.7" />
-                  <line x1="-12" y1="-2" x2="-12" y2="2" stroke="#5d7b96" strokeWidth="0.8" />
-                  <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#9bbad6" stroke="#5d7b96" strokeWidth="0.8" />
-                  <path d="M 1 -11 L 1 -6" fill="none" stroke="#5d7b96" strokeWidth="0.8" strokeLinecap="round" />
-                  <path d="M 1 -11 L 4 -11" fill="none" stroke="#5d7b96" strokeWidth="0.8" strokeLinecap="round" />
-                  <circle cx="-3" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
-                  <circle cx="2" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
-                  <circle cx="7" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
-                  <circle cx="-19" cy="-1" r="0.75" fill="#ffffff" opacity="0.7" />
-                  <circle cx="-23" cy="-3" r="1" fill="#ffffff" opacity="0.5" />
-                </g>
-              </g>
-              {/* Submarine 2 (South Atlantic, scaled down) */}
-              <g transform="translate(410, 320) scale(0.85)" opacity="0.8">
-                <g className="animate-sub">
-                  <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8baec9" stroke="#4d6b85" strokeWidth="0.85" />
-                  <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#6a879e" stroke="#4d6b85" strokeWidth="0.75" />
-                  <line x1="-12" y1="-2" x2="-12" y2="2" stroke="#4d6b85" strokeWidth="0.8" />
-                  <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8baec9" stroke="#4d6b85" strokeWidth="0.85" />
-                  <path d="M 1 -10 L 1 -6" fill="none" stroke="#4d6b85" strokeWidth="0.8" />
-                  <circle cx="-3" cy="0" r="1.2" fill="#ffffff" />
-                  <circle cx="2" cy="0" r="1.2" fill="#ffffff" />
-                  <circle cx="-18" cy="0" r="0.7" fill="#ffffff" opacity="0.75" />
-                </g>
-              </g>
-              {/* Submarine 3 (East Indian Ocean, facing other side) */}
-              <g transform="translate(700, 330) scale(-0.9, 0.9)" opacity="0.8">
-                <g className="animate-sub">
-                  <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#adbcd6" stroke="#667794" strokeWidth="0.8" />
-                  <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#8e9eb8" stroke="#667794" strokeWidth="0.7" />
-                  <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#adbcd6" stroke="#667794" strokeWidth="0.8" />
-                  <path d="M 1 -11 L 1 -6" fill="none" stroke="#667794" strokeWidth="0.8" />
-                  <circle cx="-3" cy="0" r="1.2" fill="#ffffff" />
-                  <circle cx="2" cy="0" r="1.2" fill="#ffffff" />
-                  <circle cx="-20" cy="-2" r="0.8" fill="#ffffff" opacity="0.6" />
-                </g>
-              </g>
-              {/* Submarine 4 (South Pacific East) */}
-              <g transform="translate(840, 420) scale(0.95)" opacity="0.8">
-                <g className="animate-sub">
-                  <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
-                  <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#69869c" stroke="#49657a" strokeWidth="0.75" />
-                  <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
-                  <circle cx="1" cy="0" r="1.3" fill="#ffffff" />
-                </g>
-              </g>
-
-              {/* SQUIDS (Multiple occurrences) */}
-              {/* Squid 1 (Middle Indian Ocean) */}
-              <g transform="translate(580, 350)" opacity="0.75">
-                <g className="animate-squid">
-                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
-                  <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
-                  <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
-                  <path d="M -5 -1 L -9 -3 L -5 -4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.7" />
-                  <path d="M 5 -1 L 9 -3 L 5 -4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.7" />
-                  <path d="M -2.5 9 Q -4 14 -2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
-                  <path d="M -1 9 Q -1.5 15 -0.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
-                  <path d="M 1 9 Q 1.5 15 0.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
-                  <path d="M 2.5 9 Q 4 14 2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
-                </g>
-              </g>
-              {/* Squid 2 (North Pacific, scaled down/light pinkish-teal) */}
-              <g transform="translate(230, 240) scale(0.8) rotate(15)" opacity="0.78">
-                <g className="animate-squid">
-                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ccdbe8" stroke="#7e95a8" strokeWidth="0.8" />
-                  <circle cx="-1.5" cy="3" r="0.8" fill="#1e293b" />
-                  <circle cx="1.5" cy="3" r="0.8" fill="#1e293b" />
-                  <path d="M -5 -1 L -8 -3" stroke="#7e95a8" strokeWidth="0.7" />
-                  <path d="M 5 -1 L 8 -3" stroke="#7e95a8" strokeWidth="0.7" />
-                  <path d="M -2.5 9 C -3.5 13 -2.5 16 -2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
-                  <path d="M 0 9 C -0.5 13 0.5 17 0.5 17" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
-                  <path d="M 2.5 9 C 1.5 13 2.5 16 2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
-                </g>
-              </g>
-              {/* Squid 3 (South Atlantic) */}
-              <g transform="translate(450, 430) scale(0.9)" opacity="0.72">
-                <g className="animate-squid">
-                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ebc5b8" stroke="#ad887c" strokeWidth="0.8" />
-                  <circle cx="-1.7" cy="3" r="0.8" fill="#1e293b" />
-                  <circle cx="1.7" cy="3" r="0.8" fill="#1e293b" />
-                  <path d="M -2.5 9 Q -4 13 -2.8 16" fill="none" stroke="#ad887c" strokeWidth="0.8" />
-                  <path d="M 0 9 Q -1 14 0.5 17" fill="none" stroke="#ad887c" strokeWidth="0.8" />
-                  <path d="M 2.5 9 Q 4 13 2.8 16" fill="none" stroke="#ad887c" strokeWidth="0.8" />
-                </g>
-              </g>
-              {/* Squid 4 (South Pacific East, slightly larger) */}
-              <g transform="translate(910, 380) scale(1.1) rotate(-10)" opacity="0.75">
-                <g className="animate-squid">
-                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
-                  <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
-                  <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
-                  <path d="M -2.5 9 L -3.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                  <path d="M -1 9 L -1.5 19" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                  <path d="M 1 9 L 1.5 19" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                  <path d="M 2.5 9 L 3.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                </g>
-              </g>
-
-              {/* FISH SCHOOLS (Varied occurrence patterns) */}
-              {/* Fish School A (South Pacific Left) */}
-              <g transform="translate(120, 450)" opacity="0.8">
-                <g className="animate-fish">
-                  <g transform="translate(0, 0)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
-                  </g>
-                  <g transform="translate(12, 5) scale(0.8)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
-                  </g>
-                  <g transform="translate(6, -7) scale(0.9)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
-                  </g>
-                </g>
-              </g>
-              {/* Fish School B (North Pacific Left, reversed) */}
-              <g transform="translate(100, 220)" opacity="0.8">
-                <g className="animate-fish">
-                  <g transform="translate(0, 0) scale(-1, 1)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
-                  </g>
-                  <g transform="translate(12, 6) scale(-0.8, 0.8)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
-                  </g>
-                </g>
-              </g>
-              {/* Fish School C (North Atlantic) */}
-              <g transform="translate(440, 240) scale(0.95)" opacity="0.75">
-                <g className="animate-fish">
-                  <g transform="translate(0, 0)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                  <g transform="translate(-10, -5) scale(0.85)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                  <g transform="translate(-8, 6) scale(0.75)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                </g>
-              </g>
-              {/* Fish School D (South Atlantic Deep) */}
-              <g transform="translate(520, 470) scale(0.9)" opacity="0.8">
-                <g className="animate-fish">
-                  <g transform="translate(0, 0)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                  <g transform="translate(10, 4) scale(0.8)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                </g>
-              </g>
-              {/* Fish School E (East Indian Ocean) */}
-              <g transform="translate(670, 280) scale(-1, 1)" opacity="0.8">
-                <g className="animate-fish">
-                  <g transform="translate(0, 0)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                  <g transform="translate(11, -5) scale(0.85)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                </g>
-              </g>
-              {/* Fish School F (North Pacific Right) */}
-              <g transform="translate(890, 220) scale(1.05)" opacity="0.75">
-                <g className="animate-fish">
-                  <g transform="translate(0, 0)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                  <g transform="translate(8, 4) scale(0.8)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                </g>
-              </g>
-
-              {/* Additional Occurrences of Ocean Decorations to increase density & randomized occurrences */}
-              {/* Sailboat 5 (Arabian Sea / West Indian Ocean) */}
-              <g transform="translate(560, 260) scale(0.9)" opacity="0.8">
-                <g className="animate-boat">
-                  <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
-                  <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
-                </g>
-              </g>
-              {/* Sailboat 6 (South Pacific near Tahiti / Cook Islands) */}
-              <g transform="translate(240, 380) scale(1.1) rotate(6)" opacity="0.8">
-                <g className="animate-boat">
-                  <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
-                  <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
-                  <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
-                </g>
-              </g>
-              {/* Submarine 5 (Southern Ocean / Cold Antarctica margin) */}
-              <g transform="translate(340, 470) scale(0.9)" opacity="0.8">
-                <g className="animate-sub">
-                  <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
-                  <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#69869c" stroke="#49657a" strokeWidth="0.75" />
-                  <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
-                  <circle cx="1" cy="0" r="1.3" fill="#ffffff" />
-                </g>
-              </g>
-              {/* Squid 5 (Central Pacific near Equator) */}
-              <g transform="translate(80, 290) scale(0.85) rotate(-15)" opacity="0.75">
-                <g className="animate-squid">
-                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
-                  <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
-                  <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
-                  <path d="M -2.5 9 Q -4 14 -2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                  <path d="M 0 9 Q -1 14 0.5 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                  <path d="M 2.5 9 Q 4 14 2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                </g>
-              </g>
-              {/* Squid 6 (North Atlantic Western Ridge) */}
-              <g transform="translate(390, 100) scale(0.7) rotate(25)" opacity="0.76">
-                <g className="animate-squid">
-                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ccdbe8" stroke="#7e95a8" strokeWidth="0.8" />
-                  <circle cx="-1.5" cy="3" r="0.8" fill="#1e293b" />
-                  <circle cx="1.5" cy="3" r="0.8" fill="#1e293b" />
-                  <path d="M -2.5 9 C -3.5 13 -2.5 16 -2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
-                  <path d="M 0 9 C -0.5 13 0.5 17 0.5 17" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
-                  <path d="M 2.5 9 C 1.5 13 2.5 16 2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
-                </g>
-              </g>
-              {/* Fish School G (Central Atlantic near Equator) */}
-              <g transform="translate(420, 310) scale(0.9)" opacity="0.8">
-                <g className="animate-fish">
-                  <g transform="translate(0, 0)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                  <g transform="translate(10, -5) scale(0.8)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                </g>
-              </g>
-              {/* Fish School H (West Pacific near Japan) */}
-              <g transform="translate(760, 160) scale(1.1)" opacity="0.75">
-                <g className="animate-fish">
-                  <g transform="translate(0, 0)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                  <g transform="translate(-8, -4) scale(0.8)">
-                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                  </g>
-                </g>
-              </g>
+            {/* Dynamic Randomized Ocean Decorations & Labels (Optimized layout rendering dynamically on refresh) */}
+            {/* Main Ocean Geographic Text Labels (Zoom-synchronized and beautifully formatted, rendered below continents to naturally truncate/hide overlaps) */}
+            <g id="ocean-labels" className="pointer-events-none select-none" opacity="0.45">
+              {computedOceanLabels.map((lbl) => {
+                const words = lbl.name.split(' ');
+                return (
+                  <text
+                    key={lbl.id}
+                    x={lbl.x}
+                    y={lbl.y}
+                    textAnchor="middle"
+                    className="font-sans font-bold text-[6px] sm:text-[7px] tracking-[0.14em] fill-[#456885] uppercase select-none pointer-events-none"
+                  >
+                    {words.map((word: string, idx: number) => (
+                      <tspan
+                        key={idx}
+                        x={lbl.x}
+                        dy={idx === 0 ? `${-(words.length - 1) * 0.55}em` : '1.1em'}
+                      >
+                        {word}
+                      </tspan>
+                    ))}
+                  </text>
+                );
+              })}
             </g>
 
             {/* Render Country Paths with Double-Layer Texture overlays */}
