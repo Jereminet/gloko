@@ -11,6 +11,7 @@ interface WorldMapProps {
   onSelectCountry: (countryId: string | null, countryName: string) => void;
   countryColors?: Record<string, string>;
   onMapLoaded?: () => void;
+  onLogoClick?: () => void;
 }
 
 const WorldMap = forwardRef<any, WorldMapProps>(({
@@ -19,6 +20,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   onSelectCountry,
   countryColors = {},
   onMapLoaded,
+  onLogoClick,
 }, ref) => {
   const [geoData, setGeoData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -28,18 +30,70 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   const width = 960;
   const height = 500;
 
-  // Track map transform (Zoom/Pan state) focusing on Europe on load
-  const [zoom, setZoom] = useState(1.25);
-  const [position, setPosition] = useState({ x: -15, y: 35 });
+  // Configure projection: Mercator flat map (Google Maps style) centered beautifully so upper parts are not crushed
+  const projection = d3
+    .geoMercator()
+    .center([8, 12]) // Offset slightly north so land mass is vertically balanced
+    .scale(125)      // Balanced scale to fit the 960x500 box well
+    .translate([width / 2, height / 2 + 35]);
 
-  // Center nicely on mount depending on device type
+  const pathGenerator = d3.geoPath().projection(projection);
+
+  // Track map transform (Zoom/Pan state) focusing on Niger on load
+  const [zoom, setZoom] = useState(1.25);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+
+  // Screen-to-SVG viewBox coordinates conversion taking preserveAspectRatio="xMidYMid slice" into account
+  const clientToSvgCoords = (clientX: number, clientY: number) => {
+    if (!containerRef.current) return { x: clientX, y: clientY };
+    const rect = containerRef.current.getBoundingClientRect();
+    const R = Math.max(rect.width / width, rect.height / height);
+    const offsetX = (rect.width - width * R) / 2;
+    const offsetY = (rect.height - height * R) / 2;
+    return {
+      x: ((clientX - rect.left) - offsetX) / R,
+      y: ((clientY - rect.top) - offsetY) / R,
+    };
+  };
+
+  // Get mathematically exact position centering on Niger [8, 17.5] dynamically projected
+  const getNigerCenteredPosition = (currentZoom: number) => {
+    let svgCenterX = width / 2;
+    let svgCenterY = height / 2;
+
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const R = Math.max(rect.width / width, rect.height / height);
+      const offsetX = (rect.width - width * R) / 2;
+      const offsetY = (rect.height - height * R) / 2;
+      svgCenterX = ((rect.width / 2) - offsetX) / R;
+      svgCenterY = ((rect.height / 2) - offsetY) / R;
+    }
+    
+    // Niger center is projected dynamically using the Equirectangular projection
+    const nigerPos = projection([8, 17.5]);
+    const centerX = nigerPos ? nigerPos[0] : 480;
+    const centerY = nigerPos ? nigerPos[1] : 201.13;
+    
+    return {
+      x: svgCenterX - centerX * currentZoom,
+      y: svgCenterY - centerY * currentZoom,
+    };
+  };
+
+  // Center nicely on mount depending on device type and container boundaries
   useEffect(() => {
-    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
-    const initialZoom = isMobile ? 0.6 : 1.25;
-    const initialPos = isMobile ? { x: -60, y: 80 } : { x: -15, y: 35 };
-    setZoom(initialZoom);
-    setPosition(initialPos);
-  }, []);
+    if (geoData) {
+      const timer = setTimeout(() => {
+        const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+        const initialZoom = isMobile ? 1.15 : 1.25;
+        const initialPos = getNigerCenteredPosition(initialZoom);
+        setZoom(initialZoom);
+        setPosition(initialPos);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [geoData]);
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -51,6 +105,28 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   const [searchQuery, setSearchQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [showStatsDetail, setShowStatsDetail] = useState(false);
+  const friendsBookRef = useRef<HTMLDivElement>(null);
+
+  // Close Friends Book panel if clicked outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (friendsBookRef.current && !friendsBookRef.current.contains(event.target as Node)) {
+        setShowStatsDetail(false);
+      }
+    }
+    function handleTouchOutside(event: TouchEvent) {
+      if (friendsBookRef.current && !friendsBookRef.current.contains(event.target as Node)) {
+        setShowStatsDetail(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleTouchOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleTouchOutside);
+    };
+  }, []);
 
   // Hover state for tooltip
   const [hoveredCountry, setHoveredCountry] = useState<{
@@ -115,15 +191,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     tryFetch(0);
   }, []);
 
-  // Configure projection: Equirectangular flat map so top countries are not squished or heap up
-  const projection = d3
-    .geoEquirectangular()
-    .center([0, 15])
-    .scale(152)
-    .translate([width / 2, height / 1.7]);
-
-  const pathGenerator = d3.geoPath().projection(projection);
-
   // Helper to resolve coloring: unrecorded stays light slate gray, recorded receives customized or default pretty pastel hue!
   const getCountryColor = (countryId: string, count: number, isSelected: boolean) => {
     const paddedId = countryId.padStart(3, '0');
@@ -134,9 +201,9 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
     if (count === 0) {
       if (isSelected) {
-        return '#cca670'; // Rich/deep warm golden-biscuit color when selected (very strong contrast!)
+        return '#e0ccaa'; // Rich/deep warm golden-biscuit color when selected
       }
-      return '#efe5d3'; // Elegant clear light beige for countries without friends
+      return '#f4f1ea'; // Beautiful crisp sandy off-white (Google Maps style!)
     }
 
     // Convert country ID to hash-based hue
@@ -162,34 +229,34 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
   // Prevent map from scrolling away/indefinitely by locking edges beautifully based on global size
   const limitPosition = (pos: { x: number; y: number }, currentZoom: number) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    const viewW = rect ? rect.width : width;
-    const viewH = rect ? rect.height : height;
+    const viewW = width;
+    const viewH = height;
 
     const mapW = width * currentZoom;
     const mapH = height * currentZoom;
 
-    // Determine bounds such that the map remains beautifully centered when smaller than screen,
-    // and cannot overflow or slide off the canvas when zoomed in.
+    // Use generous viewport-linked padding so map transitions and relative zooming do not snap or restrict arbitrarily
+    const padX = Math.max(100, viewW * 0.85);
+    const padY = Math.max(100, viewH * 0.85);
+
     let minX, maxX, minY, maxY;
 
     if (mapW > viewW) {
-      // Allow padding of 100px of visible ocean lines
-      minX = viewW - mapW - 100;
-      maxX = 100;
+      minX = viewW - mapW - padX;
+      maxX = padX;
     } else {
       const defaultX = (viewW - mapW) / 2;
-      minX = defaultX - 100;
-      maxX = defaultX + 100;
+      minX = defaultX - padX;
+      maxX = defaultX + padX;
     }
 
     if (mapH > viewH) {
-      minY = viewH - mapH - 100;
-      maxY = 100;
+      minY = viewH - mapH - padY;
+      maxY = padY;
     } else {
       const defaultY = (viewH - mapH) / 2;
-      minY = defaultY - 100;
-      maxY = defaultY + 100;
+      minY = defaultY - padY;
+      maxY = defaultY + padY;
     }
 
     return {
@@ -200,12 +267,18 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
   // Zoom handlers
   const scaleRelative = (factor: number) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    const centerX = rect ? rect.width / 2 : width / 2;
-    const centerY = rect ? rect.height / 2 : height / 2;
+    let centerX = width / 2;
+    let centerY = height / 2;
+
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const midPoint = clientToSvgCoords(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      centerX = midPoint.x;
+      centerY = midPoint.y;
+    }
     
     const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
-    const minZoom = isMobile ? 0.35 : 0.7;
+    const minZoom = isMobile ? 0.5 : 0.7;
     const nextZoom = Math.max(minZoom, Math.min(zoom * factor, 12));
     const nextPos = {
       x: centerX - (nextZoom / zoom) * (centerX - position.x),
@@ -215,36 +288,39 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     setZoom(nextZoom);
   };
 
-  const handleZoomIn = () => scaleRelative(1.5);
-  const handleZoomOut = () => scaleRelative(1 / 1.5);
+  const handleZoomIn = () => {
+    if (selectedCountryId) return;
+    scaleRelative(1.5);
+  };
+  const handleZoomOut = () => {
+    if (selectedCountryId) return;
+    scaleRelative(1 / 1.5);
+  };
   const handleReset = () => {
+    if (selectedCountryId) return;
     const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
-    const initialZoom = isMobile ? 0.6 : 1.25;
-    const initialPos = isMobile ? { x: -60, y: 80 } : { x: -15, y: 35 };
+    const initialZoom = isMobile ? 1.15 : 1.25;
+    const initialPos = getNigerCenteredPosition(initialZoom);
     setZoom(initialZoom);
     setPosition(initialPos);
   };
 
-  // Pan handlers (Mouse + Touch support with focal-centered touch coordinate pinch & automatic release of selection on movement/pan)
+  // Pan handlers (Mouse + Touch support with focal-centered touch coordinate pinch)
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (selectedCountryId) return; // Lock map interaction when country modal is open
     if (e.button !== 0) return; // Only left click
-    if (mobileHoveredId) {
-      setMobileHoveredId(null);
-      setHoveredCountry(null);
-    }
     setIsDragging(true);
-    dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
+    const svgPoint = clientToSvgCoords(e.clientX, e.clientY);
+    dragStart.current = { x: svgPoint.x - position.x, y: svgPoint.y - position.y };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (selectedCountryId) return; // Lock map interaction when country modal is open
     if (!isDragging) return;
-    if (mobileHoveredId) {
-      setMobileHoveredId(null);
-      setHoveredCountry(null);
-    }
+    const svgPoint = clientToSvgCoords(e.clientX, e.clientY);
     const nextPos = {
-      x: e.clientX - dragStart.current.x,
-      y: e.clientY - dragStart.current.y,
+      x: svgPoint.x - dragStart.current.x,
+      y: svgPoint.y - dragStart.current.y,
     };
     setPosition(limitPosition(nextPos, zoom));
   };
@@ -254,10 +330,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (mobileHoveredId) {
-      setMobileHoveredId(null);
-      setHoveredCountry(null);
-    }
+    if (selectedCountryId) return; // Lock map interaction when country modal is open
     if (e.touches.length === 2) {
       // Two fingers: pinch zoom
       setIsDragging(false); // Disable dragging
@@ -268,29 +341,25 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
       touchStartDist.current = Math.sqrt(dx * dx + dy * dy);
       touchStartZoom.current = zoom;
       
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (rect) {
-        touchStartMidpoint.current = {
-          x: ((t1.clientX + t2.clientX) / 2) - rect.left,
-          y: ((t1.clientY + t2.clientY) / 2) - rect.top,
-        };
-      }
+      const midPoint = clientToSvgCoords(
+        (t1.clientX + t2.clientX) / 2,
+        (t1.clientY + t2.clientY) / 2
+      );
+      touchStartMidpoint.current = midPoint;
       // Store starting position of the map so we can zoom dynamically relative to it
       dragStart.current = { x: position.x, y: position.y };
     } else if (e.touches.length === 1) {
       // One finger: pan of map
       setIsDragging(true);
       const touch = e.touches[0];
-      dragStart.current = { x: touch.clientX - position.x, y: touch.clientY - position.y };
+      const svgPoint = clientToSvgCoords(touch.clientX, touch.clientY);
+      dragStart.current = { x: svgPoint.x - position.x, y: svgPoint.y - position.y };
       touchStartDist.current = null;
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (mobileHoveredId) {
-      setMobileHoveredId(null);
-      setHoveredCountry(null);
-    }
+    if (selectedCountryId) return; // Lock map interaction when country modal is open
     if (e.touches.length === 2 && touchStartDist.current !== null) {
       const t1 = e.touches[0];
       const t2 = e.touches[1];
@@ -318,9 +387,10 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
       setZoom(nextZoom);
     } else if (e.touches.length === 1 && isDragging) {
       const touch = e.touches[0];
+      const svgPoint = clientToSvgCoords(touch.clientX, touch.clientY);
       const nextPos = {
-        x: touch.clientX - dragStart.current.x,
-        y: touch.clientY - dragStart.current.y,
+        x: svgPoint.x - dragStart.current.x,
+        y: svgPoint.y - dragStart.current.y,
       };
       setPosition(limitPosition(nextPos, zoom));
     }
@@ -333,6 +403,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
   // Extremely smooth, responsive mouse-centered focal wheel zoom
   const handleWheel = (e: React.WheelEvent) => {
+    if (selectedCountryId) return; // Lock map interaction when country modal is open
     if (mobileHoveredId) {
       setMobileHoveredId(null);
       setHoveredCountry(null);
@@ -340,15 +411,13 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     e.preventDefault();
     if (loading) return;
 
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const svgPoint = clientToSvgCoords(e.clientX, e.clientY);
+    const mouseX = svgPoint.x;
+    const mouseY = svgPoint.y;
 
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
     const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
-    const minZoom = isMobile ? 0.35 : 0.7;
+    const minZoom = isMobile ? 0.5 : 0.7;
     const nextZoom = Math.max(minZoom, Math.min(zoom * zoomFactor, 12));
 
     const nextPos = {
@@ -360,7 +429,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     setZoom(nextZoom);
   };
 
-  // Click handler on paths
+  // Click handler on paths with double-click simulation on mobile touchscreens
   const handleCountryClick = (e: React.MouseEvent | React.TouchEvent, feature: any) => {
     if (!feature || feature.id === undefined || feature.id === null) return;
     const rawId = feature.id.toString();
@@ -369,8 +438,57 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     if (!info) return;
     const countryName = info.name || `Country (${rawId})`;
 
-    // Single click/tap immediately selects country and shows details
-    onSelectCountry(paddedId, countryName);
+    // Detect touch / mobile interface
+    const isMobile = typeof window !== 'undefined' && (
+      'ontouchstart' in window || 
+      navigator.maxTouchPoints > 0 || 
+      window.innerWidth <= 768
+    );
+
+    if (isMobile) {
+      if (mobileHoveredId === paddedId) {
+        // Second click/tap: trigger actual country selection!
+        onSelectCountry(paddedId, countryName);
+        setMobileHoveredId(null);
+        setHoveredCountry(null);
+      } else {
+        // First click/tap: mock the desktop "hover" detail tooltip
+        setMobileHoveredId(paddedId);
+        
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) {
+          let clientX = 0;
+          let clientY = 0;
+          
+          if ('clientX' in e) {
+            clientX = (e as any).clientX;
+            clientY = (e as any).clientY;
+          } else if ('touches' in e && (e as any).touches.length > 0) {
+            clientX = (e as any).touches[0].clientX;
+            clientY = (e as any).touches[0].clientY;
+          } else if ('changedTouches' in e && (e as any).changedTouches.length > 0) {
+            clientX = (e as any).changedTouches[0].clientX;
+            clientY = (e as any).changedTouches[0].clientY;
+          }
+
+          const mouseX = clientX - rect.left;
+          const mouseY = clientY - rect.top;
+
+          setHoveredCountry({
+            id: paddedId,
+            name: info.name,
+            code: info.code,
+            flag: info.flag,
+            count: contactCounts[paddedId] || 0,
+            x: mouseX,
+            y: mouseY - 15,
+          });
+        }
+      }
+    } else {
+      // Laptop or Desktop: single click immediately reveals selection
+      onSelectCountry(paddedId, countryName);
+    }
   };
 
   // Mouse hover details (for Tooltip) - disabled on mobile/touch screen to avoid conflicts
@@ -476,7 +594,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
         </div>
       )}
 
-      {/* Floating Control panel top-left containing Stats + Search */}
+      {/* Floating Control panel top-left containing Logo, Friends Book, and Search Bar */}
       <div 
         onMouseDown={(e) => e.stopPropagation()}
         onMouseMove={(e) => e.stopPropagation()}
@@ -485,10 +603,38 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
         onTouchMove={(e) => e.stopPropagation()}
         onTouchEnd={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
-        className="absolute top-[76px] sm:top-[92px] left-4 sm:left-6 z-40 flex flex-col gap-3 pointer-events-auto w-64 max-w-[calc(100vw-32px)]"
+        className="absolute top-4 sm:top-6 left-4 sm:left-6 z-40 flex flex-col gap-3.5 pointer-events-auto w-64 max-w-[calc(100vw-32px)]"
       >
+        {/* GLOKO Floating Logo & Title perfectly aligned vertically */}
+        <div
+          className="flex items-center justify-start cursor-pointer select-none hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 group self-start px-4 py-1"
+          onClick={() => {
+            if (onLogoClick) {
+              onLogoClick();
+            } else {
+              onSelectCountry(null, '');
+              handleReset();
+            }
+          }}
+          title="Reset map view and view overall statistics"
+        >
+          <span 
+            className="text-xl sm:text-2xl font-sans font-extrabold uppercase tracking-widest text-[#0a1e35] flex items-center select-none drop-shadow-[0_1px_2.5px_rgba(255,255,255,1)]"
+          >
+            GL
+            <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_2px_5px_rgba(15,23,42,0.1)] p-[2.5px]">
+              <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
+            </span>
+            K
+            <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_2px_5px_rgba(15,23,42,0.1)] p-[2.5px]">
+              <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
+            </span>
+          </span>
+        </div>
+
         {/* Unified Friends Book panel */}
         <div 
+          ref={friendsBookRef}
           className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/80 shadow-md select-none font-sans overflow-hidden transition-all flex flex-col w-full"
         >
           {/* Header section which expands/collapses the popup inline */}
@@ -681,37 +827,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
             </div>
           )}
 
-          {showDropdown && !searchQuery.trim() && (
-            <div className="absolute left-0 right-0 mt-1.5 max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg z-50 divide-y divide-slate-100">
-              <div className="p-2 bg-slate-50 text-[8px] font-bold text-slate-400 uppercase tracking-widest pl-3">
-                Visited Countries
-              </div>
-              {COUNTRY_LIST.filter(c => (contactCounts[c.id] || 0) > 0).length > 0 ? (
-                COUNTRY_LIST.filter(c => (contactCounts[c.id] || 0) > 0).map((country) => {
-                  const count = contactCounts[country.id] || 0;
-                  return (
-                    <button
-                      key={country.id}
-                      onClick={() => handleSearchSelect(country.id, country.name)}
-                      className="w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors font-sans cursor-pointer"
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="text-base select-none">{country.flag}</span>
-                        <span className="font-semibold text-slate-700">{country.name}</span>
-                      </span>
-                      <span className="bg-indigo-50 text-indigo-650 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono">
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })
-              ) : (
-                <div className="py-3 px-4 text-xs text-slate-400 text-center font-sans">
-                  Click map to pin friends!
-                </div>
-              )}
-            </div>
-          )}
+
         </div>
       </div>
 
@@ -768,6 +884,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
               <circle cx="9" cy="8" r="0.5" fill="#8c7755" opacity="0.06" />
               <circle cx="21" cy="4" r="0.5" fill="#8c7755" opacity="0.06" />
             </pattern>
+
           </defs>
 
           <g 
@@ -796,306 +913,376 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
               {/* Scattered Waves */}
               {/* Pacific Left */}
               <g transform="translate(60, 150)" opacity="0.65">
-                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                <g className="animate-wave">
+                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                </g>
               </g>
               <g transform="translate(270, 110)" opacity="0.65">
-                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                <g className="animate-wave">
+                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                </g>
               </g>
               <g transform="translate(80, 360)" opacity="0.65">
-                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                <g className="animate-wave">
+                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                </g>
               </g>
               <g transform="translate(290, 460)" opacity="0.65">
-                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                <g className="animate-wave">
+                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                </g>
               </g>
               {/* Atlantic Middle */}
               <g transform="translate(370, 130)" opacity="0.65">
-                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                <g className="animate-wave">
+                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                </g>
               </g>
               <g transform="translate(480, 370)" opacity="0.65">
-                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                <g className="animate-wave">
+                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                </g>
               </g>
               {/* Indian Middle-Right */}
               <g transform="translate(640, 260)" opacity="0.65">
-                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                <g className="animate-wave">
+                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                </g>
               </g>
               <g transform="translate(770, 320)" opacity="0.65">
-                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                <g className="animate-wave">
+                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                </g>
               </g>
               {/* Pacific Right */}
               <g transform="translate(930, 120)" opacity="0.65">
-                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                <g className="animate-wave">
+                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                </g>
               </g>
               <g transform="translate(860, 470)" opacity="0.65">
-                <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                <g className="animate-wave">
+                  <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                </g>
               </g>
 
               {/* SAILBOATS (Various occurrences, non-repeating positions/scales) */}
               {/* Sailboat 1 (North Atlantic) */}
               <g transform="translate(320, 180)" opacity="0.8">
-                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
-                <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
+                <g className="animate-boat">
+                  <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
+                  <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
+                </g>
               </g>
               {/* Sailboat 2 (South Indian Ocean) */}
               <g transform="translate(740, 440)" opacity="0.8">
-                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
-                <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
+                <g className="animate-boat">
+                  <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
+                  <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M -11 7 Q -2 5 8 7" stroke="#9bbce0" strokeWidth="0.6" fill="none" />
+                </g>
               </g>
               {/* Sailboat 3 (North Pacific Left, slightly rotated) */}
               <g transform="translate(140, 110) rotate(-5)" opacity="0.75">
-                <path d="M -1 -10 L -1 -1 L -5 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.7" />
-                <path d="M 1 -11 L 1 -1 L 5 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.7" />
-                <path d="M -7 1 L 7 1 L 4.5 4.5 L -4.5 4.5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.7" />
-                <line x1="0" y1="-11" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.7" />
+                <g className="animate-boat">
+                  <path d="M -1 -10 L -1 -1 L -5 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.7" />
+                  <path d="M 1 -11 L 1 -1 L 5 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.7" />
+                  <path d="M -7 1 L 7 1 L 4.5 4.5 L -4.5 4.5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.7" />
+                  <line x1="0" y1="-11" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.7" />
+                </g>
               </g>
               {/* Sailboat 4 (North Pacific Right, slightly larger) */}
               <g transform="translate(870, 140) scale(1.15)" opacity="0.8">
-                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f1f5f9" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#f8fafc" stroke="#6b7280" strokeWidth="0.75" />
+                <g className="animate-boat">
+                  <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f1f5f9" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#f8fafc" stroke="#6b7280" strokeWidth="0.75" />
+                </g>
               </g>
 
               {/* SUBMARINES (Multiple occurrences, varied scales) */}
               {/* Submarine 1 (South Pacific Left) */}
               <g transform="translate(140, 440)" opacity="0.85">
-                <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#9bbad6" stroke="#5d7b96" strokeWidth="0.8" />
-                <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#7594b0" stroke="#5d7b96" strokeWidth="0.7" />
-                <line x1="-12" y1="-2" x2="-12" y2="2" stroke="#5d7b96" strokeWidth="0.8" />
-                <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#9bbad6" stroke="#5d7b96" strokeWidth="0.8" />
-                <path d="M 1 -11 L 1 -6" fill="none" stroke="#5d7b96" strokeWidth="0.8" strokeLinecap="round" />
-                <path d="M 1 -11 L 4 -11" fill="none" stroke="#5d7b96" strokeWidth="0.8" strokeLinecap="round" />
-                <circle cx="-3" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
-                <circle cx="2" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
-                <circle cx="7" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
-                <circle cx="-19" cy="-1" r="0.75" fill="#ffffff" opacity="0.7" />
-                <circle cx="-23" cy="-3" r="1" fill="#ffffff" opacity="0.5" />
+                <g className="animate-sub">
+                  <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#9bbad6" stroke="#5d7b96" strokeWidth="0.8" />
+                  <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#7594b0" stroke="#5d7b96" strokeWidth="0.7" />
+                  <line x1="-12" y1="-2" x2="-12" y2="2" stroke="#5d7b96" strokeWidth="0.8" />
+                  <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#9bbad6" stroke="#5d7b96" strokeWidth="0.8" />
+                  <path d="M 1 -11 L 1 -6" fill="none" stroke="#5d7b96" strokeWidth="0.8" strokeLinecap="round" />
+                  <path d="M 1 -11 L 4 -11" fill="none" stroke="#5d7b96" strokeWidth="0.8" strokeLinecap="round" />
+                  <circle cx="-3" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
+                  <circle cx="2" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
+                  <circle cx="7" cy="0" r="1.3" fill="#ffffff" stroke="#5d7b96" strokeWidth="0.5" />
+                  <circle cx="-19" cy="-1" r="0.75" fill="#ffffff" opacity="0.7" />
+                  <circle cx="-23" cy="-3" r="1" fill="#ffffff" opacity="0.5" />
+                </g>
               </g>
               {/* Submarine 2 (South Atlantic, scaled down) */}
               <g transform="translate(410, 320) scale(0.85)" opacity="0.8">
-                <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8baec9" stroke="#4d6b85" strokeWidth="0.85" />
-                <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#6a879e" stroke="#4d6b85" strokeWidth="0.75" />
-                <line x1="-12" y1="-2" x2="-12" y2="2" stroke="#4d6b85" strokeWidth="0.8" />
-                <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8baec9" stroke="#4d6b85" strokeWidth="0.85" />
-                <path d="M 1 -10 L 1 -6" fill="none" stroke="#4d6b85" strokeWidth="0.8" />
-                <circle cx="-3" cy="0" r="1.2" fill="#ffffff" />
-                <circle cx="2" cy="0" r="1.2" fill="#ffffff" />
-                <circle cx="-18" cy="0" r="0.7" fill="#ffffff" opacity="0.75" />
+                <g className="animate-sub">
+                  <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8baec9" stroke="#4d6b85" strokeWidth="0.85" />
+                  <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#6a879e" stroke="#4d6b85" strokeWidth="0.75" />
+                  <line x1="-12" y1="-2" x2="-12" y2="2" stroke="#4d6b85" strokeWidth="0.8" />
+                  <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8baec9" stroke="#4d6b85" strokeWidth="0.85" />
+                  <path d="M 1 -10 L 1 -6" fill="none" stroke="#4d6b85" strokeWidth="0.8" />
+                  <circle cx="-3" cy="0" r="1.2" fill="#ffffff" />
+                  <circle cx="2" cy="0" r="1.2" fill="#ffffff" />
+                  <circle cx="-18" cy="0" r="0.7" fill="#ffffff" opacity="0.75" />
+                </g>
               </g>
               {/* Submarine 3 (East Indian Ocean, facing other side) */}
               <g transform="translate(700, 330) scale(-0.9, 0.9)" opacity="0.8">
-                <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#adbcd6" stroke="#667794" strokeWidth="0.8" />
-                <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#8e9eb8" stroke="#667794" strokeWidth="0.7" />
-                <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#adbcd6" stroke="#667794" strokeWidth="0.8" />
-                <path d="M 1 -11 L 1 -6" fill="none" stroke="#667794" strokeWidth="0.8" />
-                <circle cx="-3" cy="0" r="1.2" fill="#ffffff" />
-                <circle cx="2" cy="0" r="1.2" fill="#ffffff" />
-                <circle cx="-20" cy="-2" r="0.8" fill="#ffffff" opacity="0.6" />
+                <g className="animate-sub">
+                  <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#adbcd6" stroke="#667794" strokeWidth="0.8" />
+                  <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#8e9eb8" stroke="#667794" strokeWidth="0.7" />
+                  <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#adbcd6" stroke="#667794" strokeWidth="0.8" />
+                  <path d="M 1 -11 L 1 -6" fill="none" stroke="#667794" strokeWidth="0.8" />
+                  <circle cx="-3" cy="0" r="1.2" fill="#ffffff" />
+                  <circle cx="2" cy="0" r="1.2" fill="#ffffff" />
+                  <circle cx="-20" cy="-2" r="0.8" fill="#ffffff" opacity="0.6" />
+                </g>
               </g>
               {/* Submarine 4 (South Pacific East) */}
               <g transform="translate(840, 420) scale(0.95)" opacity="0.8">
-                <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
-                <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#69869c" stroke="#49657a" strokeWidth="0.75" />
-                <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
-                <circle cx="1" cy="0" r="1.3" fill="#ffffff" />
+                <g className="animate-sub">
+                  <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
+                  <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#69869c" stroke="#49657a" strokeWidth="0.75" />
+                  <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
+                  <circle cx="1" cy="0" r="1.3" fill="#ffffff" />
+                </g>
               </g>
 
               {/* SQUIDS (Multiple occurrences) */}
               {/* Squid 1 (Middle Indian Ocean) */}
               <g transform="translate(580, 350)" opacity="0.75">
-                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
-                <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
-                <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
-                <path d="M -5 -1 L -9 -3 L -5 -4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.7" />
-                <path d="M 5 -1 L 9 -3 L 5 -4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.7" />
-                <path d="M -2.5 9 Q -4 14 -2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
-                <path d="M -1 9 Q -1.5 15 -0.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
-                <path d="M 1 9 Q 1.5 15 0.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
-                <path d="M 2.5 9 Q 4 14 2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
+                <g className="animate-squid">
+                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
+                  <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
+                  <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
+                  <path d="M -5 -1 L -9 -3 L -5 -4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.7" />
+                  <path d="M 5 -1 L 9 -3 L 5 -4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.7" />
+                  <path d="M -2.5 9 Q -4 14 -2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
+                  <path d="M -1 9 Q -1.5 15 -0.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
+                  <path d="M 1 9 Q 1.5 15 0.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
+                  <path d="M 2.5 9 Q 4 14 2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" strokeLinecap="round" />
+                </g>
               </g>
               {/* Squid 2 (North Pacific, scaled down/light pinkish-teal) */}
               <g transform="translate(230, 240) scale(0.8) rotate(15)" opacity="0.78">
-                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ccdbe8" stroke="#7e95a8" strokeWidth="0.8" />
-                <circle cx="-1.5" cy="3" r="0.8" fill="#1e293b" />
-                <circle cx="1.5" cy="3" r="0.8" fill="#1e293b" />
-                <path d="M -5 -1 L -8 -3" stroke="#7e95a8" strokeWidth="0.7" />
-                <path d="M 5 -1 L 8 -3" stroke="#7e95a8" strokeWidth="0.7" />
-                <path d="M -2.5 9 C -3.5 13 -2.5 16 -2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
-                <path d="M 0 9 C -0.5 13 0.5 17 0.5 17" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
-                <path d="M 2.5 9 C 1.5 13 2.5 16 2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                <g className="animate-squid">
+                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ccdbe8" stroke="#7e95a8" strokeWidth="0.8" />
+                  <circle cx="-1.5" cy="3" r="0.8" fill="#1e293b" />
+                  <circle cx="1.5" cy="3" r="0.8" fill="#1e293b" />
+                  <path d="M -5 -1 L -8 -3" stroke="#7e95a8" strokeWidth="0.7" />
+                  <path d="M 5 -1 L 8 -3" stroke="#7e95a8" strokeWidth="0.7" />
+                  <path d="M -2.5 9 C -3.5 13 -2.5 16 -2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                  <path d="M 0 9 C -0.5 13 0.5 17 0.5 17" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                  <path d="M 2.5 9 C 1.5 13 2.5 16 2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                </g>
               </g>
               {/* Squid 3 (South Atlantic) */}
               <g transform="translate(450, 430) scale(0.9)" opacity="0.72">
-                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ebc5b8" stroke="#ad887c" strokeWidth="0.8" />
-                <circle cx="-1.7" cy="3" r="0.8" fill="#1e293b" />
-                <circle cx="1.7" cy="3" r="0.8" fill="#1e293b" />
-                <path d="M -2.5 9 Q -4 13 -2.8 16" fill="none" stroke="#ad887c" strokeWidth="0.8" />
-                <path d="M 0 9 Q -1 14 0.5 17" fill="none" stroke="#ad887c" strokeWidth="0.8" />
-                <path d="M 2.5 9 Q 4 13 2.8 16" fill="none" stroke="#ad887c" strokeWidth="0.8" />
+                <g className="animate-squid">
+                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ebc5b8" stroke="#ad887c" strokeWidth="0.8" />
+                  <circle cx="-1.7" cy="3" r="0.8" fill="#1e293b" />
+                  <circle cx="1.7" cy="3" r="0.8" fill="#1e293b" />
+                  <path d="M -2.5 9 Q -4 13 -2.8 16" fill="none" stroke="#ad887c" strokeWidth="0.8" />
+                  <path d="M 0 9 Q -1 14 0.5 17" fill="none" stroke="#ad887c" strokeWidth="0.8" />
+                  <path d="M 2.5 9 Q 4 13 2.8 16" fill="none" stroke="#ad887c" strokeWidth="0.8" />
+                </g>
               </g>
               {/* Squid 4 (South Pacific East, slightly larger) */}
               <g transform="translate(910, 380) scale(1.1) rotate(-10)" opacity="0.75">
-                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
-                <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
-                <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
-                <path d="M -2.5 9 L -3.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                <path d="M -1 9 L -1.5 19" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                <path d="M 1 9 L 1.5 19" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                <path d="M 2.5 9 L 3.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                <g className="animate-squid">
+                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
+                  <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
+                  <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
+                  <path d="M -2.5 9 L -3.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                  <path d="M -1 9 L -1.5 19" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                  <path d="M 1 9 L 1.5 19" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                  <path d="M 2.5 9 L 3.5 18" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                </g>
               </g>
 
               {/* FISH SCHOOLS (Varied occurrence patterns) */}
               {/* Fish School A (South Pacific Left) */}
               <g transform="translate(120, 450)" opacity="0.8">
-                <g transform="translate(0, 0)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
-                </g>
-                <g transform="translate(12, 5) scale(0.8)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
-                </g>
-                <g transform="translate(6, -7) scale(0.9)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                <g className="animate-fish">
+                  <g transform="translate(0, 0)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                  </g>
+                  <g transform="translate(12, 5) scale(0.8)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                  </g>
+                  <g transform="translate(6, -7) scale(0.9)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                  </g>
                 </g>
               </g>
               {/* Fish School B (North Pacific Left, reversed) */}
               <g transform="translate(100, 220)" opacity="0.8">
-                <g transform="translate(0, 0) scale(-1, 1)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
-                </g>
-                <g transform="translate(12, 6) scale(-0.8, 0.8)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                <g className="animate-fish">
+                  <g transform="translate(0, 0) scale(-1, 1)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                  </g>
+                  <g transform="translate(12, 6) scale(-0.8, 0.8)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" strokeLinejoin="round" />
+                  </g>
                 </g>
               </g>
               {/* Fish School C (North Atlantic) */}
               <g transform="translate(440, 240) scale(0.95)" opacity="0.75">
-                <g transform="translate(0, 0)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                </g>
-                <g transform="translate(-10, -5) scale(0.85)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                </g>
-                <g transform="translate(-8, 6) scale(0.75)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                <g className="animate-fish">
+                  <g transform="translate(0, 0)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
+                  <g transform="translate(-10, -5) scale(0.85)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
+                  <g transform="translate(-8, 6) scale(0.75)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
                 </g>
               </g>
               {/* Fish School D (South Atlantic Deep) */}
               <g transform="translate(520, 470) scale(0.9)" opacity="0.8">
-                <g transform="translate(0, 0)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                </g>
-                <g transform="translate(10, 4) scale(0.8)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                <g className="animate-fish">
+                  <g transform="translate(0, 0)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
+                  <g transform="translate(10, 4) scale(0.8)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
                 </g>
               </g>
               {/* Fish School E (East Indian Ocean) */}
               <g transform="translate(670, 280) scale(-1, 1)" opacity="0.8">
-                <g transform="translate(0, 0)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                </g>
-                <g transform="translate(11, -5) scale(0.85)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                <g className="animate-fish">
+                  <g transform="translate(0, 0)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
+                  <g transform="translate(11, -5) scale(0.85)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
                 </g>
               </g>
               {/* Fish School F (North Pacific Right) */}
               <g transform="translate(890, 220) scale(1.05)" opacity="0.75">
-                <g transform="translate(0, 0)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                </g>
-                <g transform="translate(8, 4) scale(0.8)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                <g className="animate-fish">
+                  <g transform="translate(0, 0)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
+                  <g transform="translate(8, 4) scale(0.8)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
                 </g>
               </g>
 
               {/* Additional Occurrences of Ocean Decorations to increase density & randomized occurrences */}
               {/* Sailboat 5 (Arabian Sea / West Indian Ocean) */}
               <g transform="translate(560, 260) scale(0.9)" opacity="0.8">
-                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
-                <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
+                <g className="animate-boat">
+                  <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
+                  <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
+                </g>
               </g>
               {/* Sailboat 6 (South Pacific near Tahiti / Cook Islands) */}
               <g transform="translate(240, 380) scale(1.1) rotate(6)" opacity="0.8">
-                <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
-                <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
-                <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
+                <g className="animate-boat">
+                  <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
+                  <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
+                  <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
+                </g>
               </g>
               {/* Submarine 5 (Southern Ocean / Cold Antarctica margin) */}
               <g transform="translate(340, 470) scale(0.9)" opacity="0.8">
-                <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
-                <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#69869c" stroke="#49657a" strokeWidth="0.75" />
-                <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
-                <circle cx="1" cy="0" r="1.3" fill="#ffffff" />
+                <g className="animate-sub">
+                  <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
+                  <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#69869c" stroke="#49657a" strokeWidth="0.75" />
+                  <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
+                  <circle cx="1" cy="0" r="1.3" fill="#ffffff" />
+                </g>
               </g>
               {/* Squid 5 (Central Pacific near Equator) */}
               <g transform="translate(80, 290) scale(0.85) rotate(-15)" opacity="0.75">
-                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
-                <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
-                <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
-                <path d="M -2.5 9 Q -4 14 -2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                <path d="M 0 9 Q -1 14 0.5 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
-                <path d="M 2.5 9 Q 4 14 2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                <g className="animate-squid">
+                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#dfabb5" stroke="#a37682" strokeWidth="0.8" />
+                  <circle cx="-1.8" cy="3" r="0.85" fill="#1e293b" />
+                  <circle cx="1.8" cy="3" r="0.85" fill="#1e293b" />
+                  <path d="M -2.5 9 Q -4 14 -2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                  <path d="M 0 9 Q -1 14 0.5 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                  <path d="M 2.5 9 Q 4 14 2.8 17" fill="none" stroke="#a37682" strokeWidth="0.8" />
+                </g>
               </g>
               {/* Squid 6 (North Atlantic Western Ridge) */}
               <g transform="translate(390, 100) scale(0.7) rotate(25)" opacity="0.76">
-                <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ccdbe8" stroke="#7e95a8" strokeWidth="0.8" />
-                <circle cx="-1.5" cy="3" r="0.8" fill="#1e293b" />
-                <circle cx="1.5" cy="3" r="0.8" fill="#1e293b" />
-                <path d="M -2.5 9 C -3.5 13 -2.5 16 -2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
-                <path d="M 0 9 C -0.5 13 0.5 17 0.5 17" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
-                <path d="M 2.5 9 C 1.5 13 2.5 16 2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                <g className="animate-squid">
+                  <path d="M -5 4 C -5 -6 5 -6 5 4 C 5 7 3 9 0 9 C -3 9 -5 7 -5 4 Z" fill="#ccdbe8" stroke="#7e95a8" strokeWidth="0.8" />
+                  <circle cx="-1.5" cy="3" r="0.8" fill="#1e293b" />
+                  <circle cx="1.5" cy="3" r="0.8" fill="#1e293b" />
+                  <path d="M -2.5 9 C -3.5 13 -2.5 16 -2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                  <path d="M 0 9 C -0.5 13 0.5 17 0.5 17" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                  <path d="M 2.5 9 C 1.5 13 2.5 16 2.5 16" fill="none" stroke="#7e95a8" strokeWidth="0.8" />
+                </g>
               </g>
               {/* Fish School G (Central Atlantic near Equator) */}
               <g transform="translate(420, 310) scale(0.9)" opacity="0.8">
-                <g transform="translate(0, 0)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                </g>
-                <g transform="translate(10, -5) scale(0.8)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                <g className="animate-fish">
+                  <g transform="translate(0, 0)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
+                  <g transform="translate(10, -5) scale(0.8)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
                 </g>
               </g>
               {/* Fish School H (West Pacific near Japan) */}
               <g transform="translate(760, 160) scale(1.1)" opacity="0.75">
-                <g transform="translate(0, 0)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-                </g>
-                <g transform="translate(-8, -4) scale(0.8)">
-                  <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                <g className="animate-fish">
+                  <g transform="translate(0, 0)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
+                  <g transform="translate(-8, -4) scale(0.8)">
+                    <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
+                  </g>
                 </g>
               </g>
             </g>
- 
+
             {/* Render Country Paths with Double-Layer Texture overlays */}
             {geoData.features.map((feature: any) => {
               if (!feature || feature.id === undefined || feature.id === null) return null;
               const rawId = feature.id.toString();
               const paddedId = rawId.padStart(3, '0');
               const pathData = pathGenerator(feature);
- 
+
               // Check if this country path failed to generate (e.g., empty coordinates or Antarctica placeholder issue)
               if (!pathData) return null;
- 
+
               // Antarctica (id "010" or similar) can sometimes take up too much space. We display it but can ignore details
               const isAntarctica = paddedId === '010';
               if (isAntarctica) return null;
- 
+
               const count = contactCounts[paddedId] || 0;
               const isSelected = selectedCountryId === paddedId;
               const isMobileHovered = mobileHoveredId === paddedId;
- 
+
               return (
                 <g key={paddedId}>
-                  {/* Layer 1: Solid base country path */}
+                  {/* Crisp flat country base path */}
                   <path
                     d={pathData}
                     fill={getCountryColor(paddedId, count, isSelected)}
-                    stroke={isSelected ? '#4f46e5' : '#1e293b'}
-                    strokeWidth={isSelected ? 1.8 / zoom : (isMobileHovered ? 2.8 / zoom : 0.75 / zoom)}
+                    stroke={isSelected ? '#4f46e5' : '#b2a897'}
+                    strokeWidth={isSelected ? 1.8 / zoom : (isMobileHovered ? 2.8 / zoom : 0.55 / zoom)}
                     className="map-country select-none outline-none"
                     style={{
                       fill: getCountryColor(paddedId, count, isSelected),
@@ -1108,13 +1295,13 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                     onMouseMove={(e) => handleCountryMouseMove(e, feature)}
                     onMouseLeave={handleCountryMouseLeave}
                   />
-                  {/* Layer 2: Transparent physical paper land texture overlay */}
+                  {/* Paper land texture overlay */}
                   <path
                     d={pathData}
                     fill="url(#land-texture)"
                     stroke="none"
                     className="pointer-events-none select-none"
-                    style={{ opacity: isSelected ? 0.35 : 0.85 }}
+                    style={{ opacity: isSelected ? 0.35 : 0.75 }}
                   />
                 </g>
               );

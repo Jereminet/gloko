@@ -363,136 +363,119 @@ export default function App() {
           onSelectCountry={handleSelectCountry}
           countryColors={countryColors}
           onMapLoaded={() => setIsMapLoaded(true)}
+          onLogoClick={() => {
+            // Trigger immersive loading screen transition before centering
+            setHasLoaded(false);
+            setTimeout(() => {
+              handleSelectCountry(null, '');
+              mapRef.current?.resetView?.();
+              setHasLoaded(true);
+            }, 1250);
+          }}
         />
       </div>
 
       {/* Absolute fullscreen loader overlay that sits on top when loading */}
       {(!hasLoaded || !isMapLoaded) && <Loader />}
 
-      {/* Completely floating Logo & Title in top-left, encapsulated in a clean circle/capsule and using favicon for O's */}
-      <div
-        className="absolute top-4 left-4 sm:top-6 sm:left-6 z-30 flex items-center justify-center cursor-pointer select-none bg-white/95 backdrop-blur-sm px-5 py-2.5 sm:px-6 sm:py-3 rounded-full border border-slate-200/80 shadow-[0_4px_12px_rgba(15,23,42,0.08),inset_0_-1.5px_3px_rgba(0,0,0,0.03)] hover:shadow-[0_6px_16px_rgba(15,23,42,0.14)] hover:bg-slate-50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 group"
-        onClick={() => {
-          // Trigger immersive loading screen transition before centering
-          setHasLoaded(false);
-          setTimeout(() => {
-            handleSelectCountry(null, '');
-            mapRef.current?.resetView?.();
-            setHasLoaded(true);
-          }, 1250);
-        }}
-        title="Reset map view and view overall statistics"
-      >
-        <span 
-          className="text-xl sm:text-2xl font-sans font-semibold uppercase tracking-wider text-slate-800 flex items-center select-none"
-        >
-          GL
-          <span className="inline-flex items-center justify-center h-[0.74em] w-[0.74em] mx-[0.05em] align-middle mt-[-0.08em] select-none pointer-events-none">
-            <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none" />
-          </span>
-          K
-          <span className="inline-flex items-center justify-center h-[0.74em] w-[0.74em] mx-[0.05em] align-middle mt-[-0.08em] select-none pointer-events-none">
-            <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none" />
-          </span>
-        </span>
-      </div>
-
       {/* Floating Action Header Panel (User Profile bubble on top-right) */}
-      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-30 flex items-center gap-3">
-        {isAuthLoading ? (
-          <div className="w-8 h-8 rounded-full border-2 border-indigo-600/30 border-t-indigo-600 animate-spin" />
-        ) : user ? (
-          <div className="relative">
-            {/* Close dropdown on click outside */}
-            {showUserMenu && (
-              <div 
-                className="fixed inset-0 z-40 cursor-default" 
-                onClick={() => setShowUserMenu(false)} 
-              />
-            )}
-            
-            {/* Bubble button trigger showing just the user profile photo */}
-            <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center justify-center focus:outline-none rounded-full cursor-pointer transition-all hover:scale-105 active:scale-95 ring-offset-2 ring-indigo-600/10 focus-visible:ring-2 z-50 relative animate-in fade-in duration-200"
-              title="View Account"
-            >
-              {user.photoURL ? (
-                <img 
-                  src={user.photoURL} 
-                  alt="User Profile" 
-                  className="w-9 h-9 sm:w-11 sm:h-11 rounded-full border-2 border-white shadow-md ring-1 ring-slate-200/50"
-                  referrerPolicy="no-referrer"
+      {hasLoaded && isMapLoaded && (
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-50 flex items-center gap-3">
+          {isAuthLoading ? (
+            <div className="w-8 h-8 rounded-full border-2 border-indigo-600/30 border-t-indigo-600 animate-spin" />
+          ) : user ? (
+            <div className="relative">
+              {/* Close dropdown on click outside with backdrop blur of entire map behind it */}
+              {showUserMenu && (
+                <div 
+                  className="fixed inset-0 z-40 cursor-default bg-slate-900/15 backdrop-blur-sm animate-in fade-in duration-300" 
+                  onClick={() => setShowUserMenu(false)} 
                 />
-              ) : (
-                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-indigo-100 text-indigo-750 font-bold flex items-center justify-center text-sm shadow-md border border-indigo-250/20">
-                  {(user.displayName || 'T').charAt(0).toUpperCase()}
+              )}
+              
+              {/* Bubble button trigger showing just the user profile photo */}
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center justify-center focus:outline-none rounded-full cursor-pointer transition-all hover:scale-105 active:scale-95 ring-offset-2 ring-indigo-600/10 focus-visible:ring-2 z-50 relative animate-in fade-in duration-200"
+                title="View Account"
+              >
+                {user.photoURL ? (
+                  <img 
+                    src={user.photoURL} 
+                    alt="User Profile" 
+                    className="w-9 h-9 sm:w-11 sm:h-11 rounded-full border-2 border-white shadow-md ring-1 ring-slate-200/50"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-indigo-100 text-indigo-750 font-bold flex items-center justify-center text-sm shadow-md border border-indigo-250/20">
+                    {(user.displayName || 'T').charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </button>
+
+              {/* Dropdown Menu Popup Card */}
+              {showUserMenu && (
+                <div className="absolute right-0 mt-2.5 w-52 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-xl p-3 z-50 animate-in fade-in slide-in-from-top-1 duration-150 select-none">
+                  {/* User Identity Details */}
+                  <div className="px-1.5 py-1">
+                    <div className="text-xs font-bold text-slate-900 line-clamp-1">
+                      {user.displayName || 'Traveler'}
+                    </div>
+                    {user.email && (
+                      <div className="text-[10px] text-slate-500 truncate mt-0.5 font-semibold">
+                        {user.email}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-slate-100 my-1.5" />
+
+                  {/* Sync Status Badge block */}
+                  <div className="px-2 py-1.5 flex items-center justify-between bg-slate-50/70 border border-slate-100/50 rounded-lg">
+                    <span className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-widest flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Synced
+                    </span>
+                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                      Cloud
+                    </span>
+                  </div>
+
+                  <div className="border-t border-slate-100 my-1.5" />
+
+                  {/* Interactive Actions */}
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left px-2 py-1.5 text-xs text-red-650 hover:bg-red-50/50 hover:text-red-750 font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-2"
+                  >
+                    <svg className="w-3.5 h-3.5 stroke-current fill-none shrink-0" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                      <polyline points="16 17 21 12 16 7"></polyline>
+                      <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    Log Out
+                  </button>
                 </div>
               )}
-            </button>
-
-            {/* Dropdown Menu Popup Card */}
-            {showUserMenu && (
-              <div className="absolute right-0 mt-2.5 w-52 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-xl p-3 z-50 animate-in fade-in slide-in-from-top-1 duration-150 select-none">
-                {/* User Identity Details */}
-                <div className="px-1.5 py-1">
-                  <div className="text-xs font-bold text-slate-900 line-clamp-1">
-                    {user.displayName || 'Traveler'}
-                  </div>
-                  {user.email && (
-                    <div className="text-[10px] text-slate-500 truncate mt-0.5 font-semibold">
-                      {user.email}
-                    </div>
-                  )}
-                </div>
-
-                <div className="border-t border-slate-100 my-1.5" />
-
-                {/* Sync Status Badge block */}
-                <div className="px-2 py-1.5 flex items-center justify-between bg-slate-50/70 border border-slate-100/50 rounded-lg">
-                  <span className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-widest flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Synced
-                  </span>
-                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
-                    Cloud
-                  </span>
-                </div>
-
-                <div className="border-t border-slate-100 my-1.5" />
-
-                {/* Interactive Actions */}
-                <button
-                  onClick={handleLogout}
-                  className="w-full text-left px-2 py-1.5 text-xs text-red-650 hover:bg-red-50/50 hover:text-red-750 font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-2"
-                >
-                  <svg className="w-3.5 h-3.5 stroke-current fill-none shrink-0" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                    <polyline points="16 17 21 12 16 7"></polyline>
-                    <line x1="21" y1="12" x2="9" y2="12"></line>
-                  </svg>
-                  Log Out
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 animate-in fade-in duration-200">
-            <span className="hidden md:inline text-[9px] text-slate-500 font-semibold uppercase tracking-widest leading-none mr-1 bg-white/70 backdrop-blur-xs px-2.5 py-1.5 rounded-full border border-slate-200/50 shadow-xs">
-              Guest Mode
-            </span>
-            <button
-              onClick={handleLogin}
-              className="px-3.5 py-1.5 sm:px-4.5 sm:py-2.5 bg-slate-900/90 backdrop-blur-xs hover:bg-slate-950 active:scale-95 text-white rounded-full text-xs font-extrabold tracking-tight shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2 border border-slate-800"
-            >
-              <svg className="w-3.5 h-3.5 fill-white shrink-0" viewBox="0 0 24 24">
-                <path d="M12.24 10.285V13.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.529-8 7.859-8c2.46 0 4.105 1.025 5.047 1.926l2.427-2.334C17.955 2.192 15.34 1 12.24 1 6.033 1 1 6.033 1 12.24s5.033 11.24 11.24 11.24c6.478 0 10.793-4.537 10.793-10.986 0-.742-.08-1.302-.172-1.859H12.24z"/>
-              </svg>
-              Connect
-            </button>
-          </div>
-        )}
-      </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 animate-in fade-in duration-200">
+              <span className="hidden md:inline text-[9px] text-slate-500 font-semibold uppercase tracking-widest leading-none mr-1 bg-white/70 backdrop-blur-xs px-2.5 py-1.5 rounded-full border border-slate-200/50 shadow-xs">
+                Guest Mode
+              </span>
+              <button
+                onClick={handleLogin}
+                className="px-3.5 py-1.5 sm:px-4.5 sm:py-2.5 bg-slate-900/90 backdrop-blur-xs hover:bg-slate-950 active:scale-95 text-white rounded-full text-xs font-extrabold tracking-tight shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2 border border-slate-800"
+              >
+                <svg className="w-3.5 h-3.5 fill-white shrink-0" viewBox="0 0 24 24">
+                  <path d="M12.24 10.285V13.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.529-8 7.859-8c2.46 0 4.105 1.025 5.047 1.926l2.427-2.334C17.955 2.192 15.34 1 12.24 1 6.033 1 1 6.033 1 12.24s5.033 11.24 11.24 11.24c6.478 0 10.793-4.537 10.793-10.986 0-.742-.08-1.302-.172-1.859H12.24z"/>
+                </svg>
+                Connect
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Center Dialog Popup for Selected Country */}
       {selectedCountryId && (

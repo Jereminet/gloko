@@ -127,9 +127,9 @@ export default function Loader() {
             </div>
           </motion.div>
 
-          {/* Central Pulsating Pin Icon inside White Square */}
+          {/* Central Pulsating Badge with Favicon */}
           <motion.div
-            className="relative w-16 h-16 bg-white border border-slate-200 shadow-[0_8px_20px_rgba(15,23,42,0.06)] rounded-2xl flex items-center justify-center text-indigo-505"
+            className="relative w-16 h-16 bg-white border border-slate-200 shadow-[0_8px_20px_rgba(15,23,42,0.06)] rounded-2xl flex items-center justify-center p-3.5 select-none pointer-events-none"
             animate={{
               scale: [0.95, 1.05, 0.95],
             }}
@@ -139,7 +139,7 @@ export default function Loader() {
               ease: "easeInOut"
             }}
           >
-            <MapPin className="h-8 w-8 text-indigo-600 animate-pulse fill-indigo-50/50" />
+            <img src="/favicon.png" alt="GLOKO" className="w-full h-full object-contain pointer-events-none select-none" />
           </motion.div>
         </div>
 
@@ -151,15 +151,15 @@ export default function Loader() {
           className="flex flex-col gap-2"
         >
           <h2 
-            className="text-base sm:text-lg font-sans font-semibold uppercase tracking-wide text-slate-800 flex items-center justify-center select-none"
+            className="text-base sm:text-lg font-sans font-extrabold uppercase tracking-widest text-[#0a1e35] flex items-center justify-center select-none"
           >
             GL
-            <span className="inline-flex items-center justify-center h-[0.74em] w-[0.74em] mx-[0.04em] align-middle mt-[-0.08em] select-none pointer-events-none">
-              <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none" />
+            <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_2px_5px_rgba(15,23,42,0.1)] p-[2.5px]">
+              <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
             </span>
             K
-            <span className="inline-flex items-center justify-center h-[0.74em] w-[0.74em] mx-[0.04em] align-middle mt-[-0.08em] select-none pointer-events-none">
-              <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none" />
+            <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_2px_5px_rgba(15,23,42,0.1)] p-[2.5px]">
+              <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
             </span>
           </h2>
           <div className="h-6 overflow-hidden flex items-center justify-center">

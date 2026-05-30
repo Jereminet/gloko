@@ -67,6 +67,7 @@ export const COUNTRY_LIST: CountryInfo[] = [
   { id: "276", name: "Germany", code: "DE", flag: "🇩🇪", continent: "Europe" },
   { id: "288", name: "Ghana", code: "GH", flag: "🇬🇭", continent: "Africa" },
   { id: "300", name: "Greece", code: "GR", flag: "🇬🇷", continent: "Europe" },
+  { id: "304", name: "Groenland", code: "GL", flag: "🇬🇱", continent: "North America" },
   { id: "320", name: "Guatemala", code: "GT", flag: "🇬🇹", continent: "North America" },
   { id: "324", name: "Guinea", code: "GN", flag: "🇬🇳", continent: "Africa" },
   { id: "624", name: "Guinea-Bissau", code: "GW", flag: "🇬🇼", continent: "Africa" },
