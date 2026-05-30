@@ -135,7 +135,7 @@ export default function CountryDetails({
                       
                       {/* Micro absolute floating preset picker */}
                       {showColorPicker && (
-                        <div className="absolute top-full left-0 mt-1.5 bg-white border border-slate-200 shadow-lg rounded-xl p-2.5 z-50 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1 w-max">
+                        <div className="absolute top-full right-0 sm:left-0 sm:right-auto mt-1.5 bg-white border border-slate-200 shadow-lg rounded-xl p-2.5 z-50 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1 w-max">
                           {[
                             '#6366f1', // Indigo
                             '#3b82f6', // Sapphire Blue

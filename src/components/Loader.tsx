@@ -23,58 +23,35 @@ export default function Loader() {
   return (
     <div className="fixed inset-0 min-h-screen bg-[#d4e5f7] flex flex-col items-center justify-center overflow-hidden z-50 select-none">
       
-      {/* Decorative full-screen ocean SVG background with Waves, Sailboats, Submarines, and Fish schools */}
-      <div className="absolute inset-0 pointer-events-none w-full h-full">
-        <svg className="w-full h-full opacity-60" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid slice" fill="none">
-          {/* Scattered Waves */}
-          <g transform="translate(100, 100)" opacity="0.65">
-            <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" />
-          </g>
-          <g transform="translate(350, 120)" opacity="0.65">
-            <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" />
-          </g>
-          <g transform="translate(150, 450)" opacity="0.65">
-            <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" />
-          </g>
-          <g transform="translate(450, 480)" opacity="0.65">
-            <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" />
-          </g>
-          <g transform="translate(850, 150)" opacity="0.65">
-            <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" />
-          </g>
-          <g transform="translate(750, 420)" opacity="0.65">
-            <path d="M 0 0 Q 4 -3 8 0 M 14 3 Q 18 0 22 3" stroke="#9bbce0" strokeWidth="1.2" strokeLinecap="round" />
-          </g>
+      {/* Fixed map representation from the main menu, beautifully blurred */}
+      <div className="absolute inset-0 pointer-events-none w-full h-full overflow-hidden">
+        <svg 
+          className="w-full h-full opacity-55 scale-105" 
+          viewBox="0 0 1000 500" 
+          preserveAspectRatio="xMidYMid slice"
+          style={{ filter: 'blur(8px)' }}
+        >
+          {/* North America */}
+          <path d="M 120,80 L 150,60 L 220,50 L 250,70 L 280,60 L 290,110 L 250,130 L 220,130 L 180,180 L 190,200 L 170,250 L 140,230 L 160,195 L 140,160 L 110,140 L 100,110 Z" fill="#f4f1ea" stroke="#b2a897" strokeWidth="1" />
+          <path d="M 270,30 L 310,25 L 340,35 L 320,60 L 280,60 Z" fill="#f4f1ea" stroke="#b2a897" strokeWidth="1" /> {/* Greenland */}
+          
+          {/* South America */}
+          <path d="M 170,260 L 190,265 L 225,290 L 250,330 L 230,390 L 210,430 L 195,450 L 190,440 L 190,400 L 170,340 L 160,290 Z" fill="#f4f1ea" stroke="#b2a897" strokeWidth="1" />
+          
+          {/* Africa */}
+          <path d="M 420,185 L 450,180 L 490,190 L 510,220 L 530,240 L 535,270 L 510,320 L 490,350 L 475,340 L 470,295 L 440,280 L 415,240 L 405,200 Z" fill="#f4f1ea" stroke="#b2a897" strokeWidth="1" />
+          <path d="M 535,310 L 545,315 L 540,340 L 532,335 Z" fill="#f4f1ea" stroke="#b2a897" strokeWidth="1" /> {/* Madagascar */}
 
-          {/* Sailboat */}
-          <g transform="translate(200, 180) scale(1.2)" opacity="0.75">
-            <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-            <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
-            <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
-            <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
-          </g>
-          <g transform="translate(800, 320) scale(1.1) rotate(5)" opacity="0.75">
-            <path d="M -1 -12 L -1 -1 L -6 -1 Z" fill="#ffffff" stroke="#728fa8" strokeWidth="0.75" />
-            <path d="M 1 -13 L 1 -1 L 6 -1 Z" fill="#f8fafc" stroke="#728fa8" strokeWidth="0.75" />
-            <path d="M -8 1 L 8 1 L 5 5 L -5 5 Z" fill="#e2e8f0" stroke="#728fa8" strokeWidth="0.75" strokeLinejoin="round" />
-            <line x1="0" y1="-13" x2="0" y2="1" stroke="#728fa8" strokeWidth="0.75" />
-          </g>
-
-          {/* Submarine */}
-          <g transform="translate(680, 160) scale(1.1)" opacity="0.75">
-            <path d="M -12 0 C -12 -7 12 -7 12 0 C 12 7 -12 7 -12 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
-            <path d="M -12 0 L -16 -4 L -16 4 Z" fill="#69869c" stroke="#49657a" strokeWidth="0.75" />
-            <path d="M -2 -6 L 4 -6 L 4 0 L -2 0 Z" fill="#8ca9bf" stroke="#49657a" strokeWidth="0.85" />
-            <circle cx="1" cy="0" r="1.3" fill="#ffffff" />
-          </g>
-
-          {/* Fish School */}
-          <g transform="translate(500, 280) scale(1.2)" opacity="0.7">
-            <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-            <g transform="translate(10, -5) scale(0.8)">
-              <path d="M -6 0 Q -1 -3 2 0 L 4 -2 L 4 2 L 2 0 Q -1 3 -6 0 Z" fill="#8ca9c7" stroke="#6887a3" strokeWidth="0.5" />
-            </g>
-          </g>
+          {/* Eurasia (Europe + Asia) */}
+          <path d="M 390,150 L 390,120 L 420,100 L 450,60 L 500,50 L 600,45 L 750,45 L 820,60 L 850,90 L 840,130 L 810,160 L 830,190 L 790,210 L 760,180 L 730,225 L 680,240 L 660,190 L 610,200 L 580,235 L 560,200 L 521,215 L 480,180 Z" fill="#f4f1ea" stroke="#b2a897" strokeWidth="1" />
+          
+          {/* Australia & Oceania */}
+          <path d="M 720,330 L 750,320 L 790,340 L 780,380 L 740,380 L 710,350 Z" fill="#f4f1ea" stroke="#b2a897" strokeWidth="1" />
+          <path d="M 795,395 L 805,405 L 810,395 Z" fill="#f4f1ea" stroke="#b2a897" strokeWidth="1" /> {/* New Zealand */}
+          
+          {/* Great Britain & Iceland */}
+          <path d="M 380,85 L 390,95 L 380,105 L 375,95 Z" fill="#f4f1ea" stroke="#b2a897" strokeWidth="1" />
+          <path d="M 330,65 L 345,60 L 340,75 Z" fill="#f4f1ea" stroke="#b2a897" strokeWidth="1" />
         </svg>
       </div>
 

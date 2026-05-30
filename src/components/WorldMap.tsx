@@ -100,6 +100,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   const touchStartDist = useRef<number | null>(null);
   const touchStartZoom = useRef<number>(1);
   const touchStartMidpoint = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const touchStartClient = useRef<{ x: number; y: number } | null>(null);
 
   // Country search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -397,9 +398,10 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     const mapW = width * currentZoom;
     const mapH = height * currentZoom;
 
-    // Snoot bounds with tight constraints so world map remains beautifully on screen
-    const padX = Math.max(30, viewW * 0.15);
-    const padY = Math.max(30, viewH * 0.15);
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+    // Relaxed padding bounds on mobile so world map remains beautifully and easily pannable on screen
+    const padX = isMobile ? viewW * 0.65 : Math.max(30, viewW * 0.15);
+    const padY = isMobile ? viewH * 0.65 : Math.max(30, viewH * 0.15);
 
     let minX, maxX, minY, maxY;
 
@@ -492,8 +494,8 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (selectedCountryId) return; // Lock map interaction when country modal is open
     if (e.touches.length === 2) {
+      if (selectedCountryId) return; // Lock map interaction when country modal is open
       // Two fingers: pinch zoom
       setIsDragging(false); // Disable dragging
       const t1 = e.touches[0];
@@ -517,12 +519,13 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
       const svgPoint = clientToSvgCoords(touch.clientX, touch.clientY);
       dragStart.current = { x: svgPoint.x - position.x, y: svgPoint.y - position.y };
       touchStartDist.current = null;
+      touchStartClient.current = { x: touch.clientX, y: touch.clientY };
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (selectedCountryId) return; // Lock map interaction when country modal is open
     if (e.touches.length === 2 && touchStartDist.current !== null) {
+      if (selectedCountryId) return; // Lock map interaction when country modal is open
       const t1 = e.touches[0];
       const t2 = e.touches[1];
       const dx = t1.clientX - t2.clientX;
@@ -549,6 +552,23 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
       setZoom(nextZoom);
     } else if (e.touches.length === 1 && isDragging) {
       const touch = e.touches[0];
+      
+      // Check swipe gesture on mobile
+      if (touchStartClient.current) {
+        const dx = touch.clientX - touchStartClient.current.x;
+        const dy = touch.clientY - touchStartClient.current.y;
+        const totalDist = Math.sqrt(dx * dx + dy * dy);
+        
+        // If they swiped/dragged, unselect any currently selected / hovered country immediately
+        if (totalDist > 8) {
+          if (selectedCountryId || mobileHoveredId) {
+            onSelectCountry(null, '');
+            setMobileHoveredId(null);
+            setHoveredCountry(null);
+          }
+        }
+      }
+
       const svgPoint = clientToSvgCoords(touch.clientX, touch.clientY);
       const nextPos = {
         x: svgPoint.x - dragStart.current.x,
@@ -561,6 +581,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   const handleTouchEnd = () => {
     setIsDragging(false);
     touchStartDist.current = null;
+    touchStartClient.current = null;
   };
 
   // Extremely smooth, responsive mouse-centered focal wheel zoom
@@ -689,18 +710,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   };
 
   const handleCountryMouseMove = (e: React.MouseEvent, feature: any) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect || !hoveredCountry) return;
-
-    setHoveredCountry((prev) =>
-      prev
-        ? {
-            ...prev,
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top - 15,
-          }
-        : null
-    );
+    // Left empty intentionally so that country tooltip stays locked at its point of entry
   };
 
   const handleCountryMouseLeave = () => {
@@ -772,251 +782,264 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           ref={friendsBookRef}
           className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/80 shadow-md select-none font-sans overflow-hidden transition-all flex flex-col w-full"
         >
-          {/* Integrated GLOKO Logo Block with Next-To-Title Search Trigger */}
+          {/* Integrated GLOKO Logo Block with Search Cover */}
           <div
-            className="flex items-center justify-between select-none border-b border-slate-100 bg-slate-50/45 py-2.5 px-4 relative"
+            className="flex items-center justify-between select-none border-b border-slate-100 bg-slate-50/45 py-2 px-3 relative min-h-[46px]"
           >
-            <div
-              className="flex items-center cursor-pointer"
-              onClick={() => {
-                if (onLogoClick) {
-                  onLogoClick();
-                } else {
-                  onSelectCountry(null, '');
-                  handleReset();
-                }
-              }}
-              title="Reset map view and view overall statistics"
-            >
-              <span 
-                className="text-base sm:text-lg font-sans font-extrabold uppercase tracking-widest text-[#0a1e35] flex items-center select-none"
-              >
-                GL
-                <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
-                  <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
-                </span>
-                K
-                <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
-                  <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
-                </span>
-              </span>
-            </div>
-
-            {/* Next-To-Title Search Toggle */}
-            <div className="relative flex items-center gap-1.5">
-              {isSearchExpanded ? (
-                <div className="flex items-center gap-1 bg-white border border-slate-250/90 rounded-lg px-1.5 py-0.5 w-32 animate-in fade-in slide-in-from-right-1 duration-150">
-                  <input
-                    type="text"
-                    placeholder="Search..."
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setShowDropdown(true);
-                    }}
-                    autoFocus
-                    className="w-full bg-transparent border-none text-[11px] outline-none font-sans text-slate-800"
-                  />
-                  <button 
-                    onClick={() => {
+            {isSearchExpanded ? (
+              <div className="flex items-center gap-2 bg-white border border-indigo-200/90 rounded-xl px-2.5 py-1.5 w-full animate-in fade-in duration-150 shadow-xs">
+                <Search className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Search countries or friends..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  autoFocus
+                  className="w-full bg-transparent border-none text-xs outline-none font-sans text-slate-800"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
                       setIsSearchExpanded(false);
                       setSearchQuery('');
-                      setShowDropdown(false);
-                    }}
-                    className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-650 cursor-pointer"
+                    }
+                  }}
+                />
+                <button 
+                  onClick={() => {
+                    setIsSearchExpanded(false);
+                    setSearchQuery('');
+                  }}
+                  className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 cursor-pointer shrink-0"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <div
+                  className="flex items-center cursor-pointer"
+                  onClick={() => {
+                    if (onLogoClick) {
+                      onLogoClick();
+                    } else {
+                      onSelectCountry(null, '');
+                      handleReset();
+                    }
+                  }}
+                  title="Reset map view and view overall statistics"
+                >
+                  <span 
+                    className="text-base sm:text-lg font-sans font-extrabold uppercase tracking-widest text-[#0a1e35] flex items-center select-none"
                   >
-                    <X className="h-3 w-3" />
-                  </button>
+                    GL
+                    <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
+                      <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
+                    </span>
+                    K
+                    <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
+                      <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
+                    </span>
+                  </span>
                 </div>
-              ) : (
+
                 <button
                   onClick={() => setIsSearchExpanded(true)}
-                  className="p-1 hover:bg-slate-150/55 rounded-lg text-slate-500 hover:text-indigo-650 transition-colors cursor-pointer flex items-center justify-center"
+                  className="p-1.5 hover:bg-slate-150/55 rounded-lg text-slate-500 hover:text-indigo-650 transition-colors cursor-pointer flex items-center justify-center"
                   title="Search map..."
                 >
                   <Search className="h-4 w-4" />
                 </button>
-              )}
-            </div>
-
-            {/* Next-To-Title search dropdown results, absolute overlayed below Logo Block */}
-            {showDropdown && searchQuery.trim() && (
-              <div className="absolute top-[100%] left-0 right-0 max-h-72 overflow-y-auto bg-white border-b border-slate-200 shadow-xl z-50 divide-y divide-slate-100/90 animate-in fade-in slide-in-from-top-1 duration-150">
-                {filteredCountries.length > 0 && (
-                  <div>
-                    <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 font-sans">
-                      Countries ({filteredCountries.length})
-                    </div>
-                    {filteredCountries.map((country) => {
-                      const count = contactCounts[country.id] || 0;
-                      return (
-                        <button
-                          key={country.id}
-                          onClick={() => {
-                            handleSearchSelect(country.id, country.name);
-                            setIsSearchExpanded(false);
-                          }}
-                          className="w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors font-sans cursor-pointer text-slate-700"
-                        >
-                          <span className="flex items-center gap-2">
-                            <span className="text-base select-none">{country.flag}</span>
-                            <span className="font-semibold">{country.name}</span>
-                          </span>
-                          {count > 0 ? (
-                            <span className="bg-indigo-50 text-indigo-655 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono">
-                              {count}
-                            </span>
-                          ) : (
-                            <span className="text-[9px] text-slate-400">0</span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {filteredFriends.length > 0 && (
-                  <div>
-                    <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 font-sans">
-                      Friends ({filteredFriends.length})
-                    </div>
-                    {filteredFriends.map((friend) => {
-                      const paddedId = friend.countryId.padStart(3, '0');
-                      const country = COUNTRY_BY_ID[paddedId];
-                      const countryFlag = country?.flag || '🗺️';
-                      return (
-                        <button
-                          key={friend.id}
-                          onClick={() => {
-                            handleSearchSelect(paddedId, country?.name || `Country #${paddedId}`);
-                            setIsSearchExpanded(false);
-                          }}
-                          className="w-full text-left px-3 py-2.5 text-xs flex flex-col gap-0.5 hover:bg-slate-50/70 transition-colors font-sans cursor-pointer text-slate-750"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-850">{friend.name}</span>
-                            <span className="text-[10px] select-none flex items-center gap-1 bg-indigo-55 text-indigo-650 px-1.5 py-0.5 rounded font-bold font-sans">
-                              <span>{countryFlag}</span>
-                              <span>{country?.name || 'World'}</span>
-                            </span>
-                          </div>
-                          {friend.city && (
-                            <span className="text-[9px] text-slate-400 font-normal">📍 {friend.city}</span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {filteredCountries.length === 0 && filteredFriends.length === 0 && (
-                  <div className="py-3 px-4 text-xs text-slate-400 text-center font-sans">
-                    No country or friend matches
-                  </div>
-                )}
-              </div>
+              </>
             )}
           </div>
 
-          {/* Header section which expands/collapses the popup inline */}
-          <div 
-            onClick={() => setShowStatsDetail((prev) => !prev)}
-            className="px-4 py-3.5 flex flex-col gap-1 cursor-pointer hover:bg-slate-50 transition-colors select-none"
-            title="Click to view/hide friends list"
-          >
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-[9px] font-bold text-indigo-650 uppercase tracking-widest leading-none">
-                <span>📖</span> Friends Book
-              </span>
-              <span className="text-[8px] text-slate-400 font-medium font-sans bg-slate-150 px-1.5 py-0.5 rounded">
-                {showStatsDetail ? 'Hide list' : 'Click to expand'}
-              </span>
-            </div>
-            <div className="flex items-baseline gap-1.5 mt-1">
-              <span className="text-base font-bold text-slate-800 leading-none">
-                {new Set(contacts.map((c) => c.countryId.padStart(3, '0'))).size}
-              </span>
-              <span className="text-[10px] text-slate-400 font-medium">Countries</span>
-              <span className="text-xs text-slate-400 mx-1">|</span>
-              <span className="text-base font-bold text-slate-800 leading-none">{contacts.length}</span>
-              <span className="text-[10px] text-slate-400 font-medium font-sans">Friends</span>
-            </div>
-          </div>
-
-          {/* Inline Expanded Directory Area */}
-          {showStatsDetail && (
-            <div className="border-t border-slate-100 flex flex-col w-full max-h-[250px] sm:max-h-[320px] bg-white animate-in fade-in slide-in-from-top-1 duration-150">
+          {/* Search results shown inline directly inside the book body when search is active */}
+          {isSearchExpanded && (
+            <div className="border-t border-slate-100 flex flex-col w-full max-h-[300px] sm:max-h-[360px] bg-white animate-in fade-in duration-150 overflow-hidden">
               <div className="overflow-y-auto flex-grow divide-y divide-slate-100/60 p-1">
-                {contacts.length === 0 ? (
-                  <div className="py-8 px-4 text-center text-[11px] text-slate-400">
-                    You don't have any friends recorded yet. Click a country to add!
-                  </div>
-                ) : (
-                  Object.keys(contactCounts).map((paddedId) => {
-                    const country = COUNTRY_BY_ID[paddedId];
-                    const countryName = country?.name || `Country #${paddedId}`;
-                    const countryFlag = country?.flag || '🗺️';
-                    const countryFriends = contacts.filter(
-                      (c) => c.countryId.padStart(3, '0') === paddedId
-                    );
-
-                    return {
-                      id: paddedId,
-                      name: countryName,
-                      flag: countryFlag,
-                      friends: countryFriends,
-                    };
-                  })
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map((group) => (
-                    <div key={group.id} className="p-2 flex flex-col gap-1.5 hover:bg-slate-50/40 rounded-xl transition-colors">
-                      {/* Header trigger to select country on map */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectCountry(group.id, group.name);
-                        }}
-                        className="w-full text-left flex items-center justify-between text-xs font-semibold text-slate-800 hover:text-indigo-650 transition-colors group cursor-pointer"
-                      >
-                        <span className="flex items-center gap-1.5 truncate">
-                          <span className="text-base shrink-0 leading-none">{group.flag}</span>
-                          <span className="truncate group-hover:underline">{group.name}</span>
-                        </span>
-                        <span className="text-[9px] text-indigo-650 bg-indigo-50/70 py-0.5 px-1.5 font-bold rounded">
-                          {group.friends.length}
-                        </span>
-                      </button>
-
-                      {/* Compact list of individual connections for this country */}
-                      <div className="pl-5.5 flex flex-col gap-1">
-                        {group.friends.map((friend) => (
-                          <div 
-                            key={friend.id}
-                            className="bg-slate-50/40 border border-slate-100/50 p-1.5 rounded-lg flex flex-col gap-0.5"
-                          >
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-[10px] font-bold text-slate-705 truncate">
-                                {friend.name}
+                {!searchQuery.trim() ? null : (
+                  <>
+                    {filteredCountries.length > 0 && (
+                      <div className="pb-1.5">
+                        <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-105 font-sans">
+                          Countries ({filteredCountries.length})
+                        </div>
+                        {filteredCountries.map((country) => {
+                          const count = contactCounts[country.id] || 0;
+                          return (
+                            <button
+                              key={country.id}
+                              onClick={() => {
+                                handleSearchSelect(country.id, country.name);
+                                setIsSearchExpanded(false);
+                                setSearchQuery('');
+                              }}
+                              className="w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-indigo-50/50 hover:text-indigo-650 transition-colors font-sans cursor-pointer text-slate-700"
+                            >
+                              <span className="flex items-center gap-2">
+                                <span className="text-base select-none">{country.flag}</span>
+                                <span className="font-semibold">{country.name}</span>
                               </span>
-                            </div>
-                            {friend.city && (
-                              <span className="text-[9px] text-slate-400 font-normal">
-                                📍 {friend.city}
-                              </span>
-                            )}
-                            {friend.contactInfo && (
-                              <span className="text-[8px] text-slate-400 font-mono tracking-tight pt-0.5 line-clamp-1 truncate">
-                                ✉️ {friend.contactInfo}
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                              {count > 0 ? (
+                                <span className="bg-indigo-50 text-indigo-655 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono">
+                                  {count}
+                                </span>
+                              ) : (
+                                <span className="text-[9px] text-slate-400">0</span>
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
-                    </div>
-                  ))
+                    )}
+
+                    {filteredFriends.length > 0 && (
+                      <div className="pb-1.5">
+                        <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-105 font-sans">
+                          Friends ({filteredFriends.length})
+                        </div>
+                        {filteredFriends.map((friend) => {
+                          const paddedId = friend.countryId.padStart(3, '0');
+                          const country = COUNTRY_BY_ID[paddedId];
+                          const countryFlag = country?.flag || '🗺️';
+                          return (
+                            <button
+                              key={friend.id}
+                              onClick={() => {
+                                handleSearchSelect(paddedId, country?.name || `Country #${paddedId}`);
+                                setIsSearchExpanded(false);
+                                setSearchQuery('');
+                              }}
+                              className="w-full text-left px-3 py-2.5 text-xs flex flex-col gap-0.5 hover:bg-indigo-50/35 transition-colors font-sans cursor-pointer text-slate-750"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-slate-850">{friend.name}</span>
+                                <span className="text-[10px] select-none flex items-center gap-1 bg-indigo-55 text-indigo-650 px-1.5 py-0.5 rounded font-bold font-sans">
+                                  <span>{countryFlag}</span>
+                                  <span>{country?.name || 'World'}</span>
+                                </span>
+                              </div>
+                              {friend.city && (
+                                <span className="text-[9px] text-slate-400 font-normal">📍 {friend.city}</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {filteredCountries.length === 0 && filteredFriends.length === 0 && (
+                      <div className="py-8 px-4 text-xs text-slate-400 text-center font-sans">
+                        No country or friend matches
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
+          )}
+          {/* Header section which expands/collapses the popup inline */}
+          {!isSearchExpanded && (
+            <>
+              <div 
+                onClick={() => setShowStatsDetail((prev) => !prev)}
+                className="px-4 py-3.5 flex flex-col gap-1 cursor-pointer hover:bg-slate-50 transition-colors select-none"
+                title="Click to view/hide friends list"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-[9px] font-bold text-indigo-655 uppercase tracking-widest leading-none">
+                    <span>📖</span> Friends Book
+                  </span>
+                  <span className="text-[8px] text-slate-400 font-medium font-sans bg-slate-150 px-1.5 py-0.5 rounded">
+                    {showStatsDetail ? 'Hide list' : 'Click to expand'}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1.5 mt-1">
+                  <span className="text-base font-bold text-slate-800 leading-none">
+                    {new Set(contacts.map((c) => c.countryId.padStart(3, '0'))).size}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-medium">Countries</span>
+                  <span className="text-xs text-slate-400 mx-1">|</span>
+                  <span className="text-base font-bold text-slate-800 leading-none">{contacts.length}</span>
+                  <span className="text-[10px] text-slate-400 font-medium font-sans">Friends</span>
+                </div>
+              </div>
+
+              {/* Inline Expanded Directory Area */}
+              {showStatsDetail && (
+                <div className="border-t border-slate-100 flex flex-col w-full max-h-[250px] sm:max-h-[320px] bg-white animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div className="overflow-y-auto flex-grow divide-y divide-slate-100/60 p-1">
+                    {contacts.length === 0 ? (
+                      <div className="py-8 px-4 text-center text-[11px] text-slate-400">
+                        You don't have any friends recorded yet. Click a country to add!
+                      </div>
+                    ) : (
+                      Object.keys(contactCounts).map((paddedId) => {
+                        const country = COUNTRY_BY_ID[paddedId];
+                        const countryName = country?.name || `Country #${paddedId}`;
+                        const countryFlag = country?.flag || '🗺️';
+                        const countryFriends = contacts.filter(
+                          (c) => c.countryId.padStart(3, '0') === paddedId
+                        );
+
+                        return {
+                          id: paddedId,
+                          name: countryName,
+                          flag: countryFlag,
+                          friends: countryFriends,
+                        };
+                      })
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((group) => (
+                        <div key={group.id} className="p-2 flex flex-col gap-1.5 hover:bg-slate-50/40 rounded-xl transition-colors">
+                          {/* Header trigger to select country on map */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectCountry(group.id, group.name);
+                            }}
+                            className="w-full text-left flex items-center justify-between text-xs font-semibold text-slate-800 hover:text-indigo-650 transition-colors group cursor-pointer"
+                          >
+                            <span className="flex items-center gap-1.5 truncate">
+                              <span className="text-base shrink-0 leading-none">{group.flag}</span>
+                              <span className="truncate group-hover:underline">{group.name}</span>
+                            </span>
+                            <span className="text-[9px] text-indigo-650 bg-indigo-50/70 py-0.5 px-1.5 font-bold rounded">
+                              {group.friends.length}
+                            </span>
+                          </button>
+
+                          {/* Compact list of individual connections for this country */}
+                          <div className="pl-5.5 flex flex-col gap-1">
+                            {group.friends.map((friend) => (
+                              <div 
+                                key={friend.id}
+                                className="bg-slate-50/40 border border-slate-100/50 p-1.5 rounded-lg flex flex-col gap-0.5"
+                              >
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-[10px] font-bold text-slate-705 truncate">
+                                    {friend.name}
+                                  </span>
+                                </div>
+                                {friend.city && (
+                                  <span className="text-[9px] text-slate-400 font-normal">
+                                    📍 {friend.city}
+                                  </span>
+                                )}
+                                {friend.contactInfo && (
+                                  <span className="text-[8px] text-slate-400 font-mono tracking-tight pt-0.5 line-clamp-1 truncate">
+                                    ✉️ {friend.contactInfo}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
