@@ -270,6 +270,10 @@ export default function App() {
 
   // Delete Contact
   const handleDeleteContact = (id: string) => {
+    // Determine the country ID of the contact being deleted prior to deletion
+    const contactToDelete = contacts.find((c) => c.id === id);
+    const countryId = contactToDelete?.countryId ? contactToDelete.countryId.padStart(3, '0') : null;
+
     setConfirmConfig({
       isOpen: true,
       title: 'Remove Friend',
@@ -280,12 +284,38 @@ export default function App() {
         if (user) {
           try {
             await deleteDoc(doc(db, 'contacts', id));
+            // Reset color in Firestore if this was the last friend in that country
+            if (countryId) {
+              const otherCountryFriends = contacts.filter(
+                (c) => c.countryId.padStart(3, '0') === countryId && c.id !== id
+              );
+              if (otherCountryFriends.length === 0) {
+                const colorDocRef = doc(db, 'users', user.uid, 'colors', countryId);
+                await deleteDoc(colorDocRef);
+              }
+            }
           } catch (e) {
             handleFirestoreError(e, OperationType.DELETE, `contacts/${id}`);
           }
         } else {
           const updated = contacts.filter((c) => c.id !== id);
           saveAndSyncContacts(updated);
+          // Reset color in local storage if this was the last friend in that country
+          if (countryId) {
+            const otherCountryFriends = updated.filter(
+              (c) => c.countryId.padStart(3, '0') === countryId
+            );
+            if (otherCountryFriends.length === 0) {
+              const updatedColors = { ...countryColors };
+              delete updatedColors[countryId];
+              setCountryColors(updatedColors);
+              try {
+                localStorage.setItem('travel_contacts_map_country_colors', JSON.stringify(updatedColors));
+              } catch (e) {
+                console.error('Failed to save updated colors after filter:', e);
+              }
+            }
+          }
         }
         setConfirmConfig(null);
       }

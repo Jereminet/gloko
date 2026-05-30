@@ -30,11 +30,12 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   const width = 960;
   const height = 500;
 
-  // Configure projection: Mercator flat map (Google Maps style) centered beautifully so upper parts are not crushed
+  // Configure projection: Mercator flat map (Google Maps style) rotated precisely to the Bering Strait (-169°W)
   const projection = d3
     .geoMercator()
-    .center([8, 12]) // Offset slightly north so land mass is vertically balanced
-    .scale(125)      // Balanced scale to fit the 960x500 box well
+    .rotate([-11, 0]) // Shift cut to Bering Strait so Russia is seamlessly whole on the right
+    .center([0, 12])  // Vertical balance centering on the rotated meridian
+    .scale(125)       // Balanced scale to fit the 960x500 box well
     .translate([width / 2, height / 2 + 35]);
 
   const pathGenerator = d3.geoPath().projection(projection);
@@ -70,7 +71,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
       svgCenterY = ((rect.height / 2) - offsetY) / R;
     }
     
-    // Niger center is projected dynamically using the Equirectangular projection
     const nigerPos = projection([8, 17.5]);
     const centerX = nigerPos ? nigerPos[0] : 480;
     const centerY = nigerPos ? nigerPos[1] : 201.13;
@@ -104,6 +104,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   // Country search state
   const [searchQuery, setSearchQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [showStatsDetail, setShowStatsDetail] = useState(false);
   const friendsBookRef = useRef<HTMLDivElement>(null);
 
@@ -338,38 +339,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
             rawFeaturesRef.current = JSON.parse(JSON.stringify(countriesGeo.features));
           }
 
-          // Heal Russia (ID is "643") coordinates so they are continuous on the eastern/right side of the Mercator map 
-          // instead of splitting the Chukotka peninsula to the far left.
-          if (countriesGeo && countriesGeo.features) {
-            countriesGeo.features = countriesGeo.features.map((f: any) => {
-              const fid = f.id ? f.id.toString() : '';
-              if (fid === '643' || fid === 'RUS') {
-                const healCoordinates = (coords: any): any => {
-                  if (typeof coords[0] === 'number') {
-                    let [lon, lat] = coords;
-                    if (lon < 0) {
-                      lon += 360;
-                    }
-                    return [lon, lat];
-                  } else if (Array.isArray(coords[0])) {
-                    return coords.map(healCoordinates);
-                  }
-                  return coords;
-                };
-                if (f.geometry && f.geometry.coordinates) {
-                  return {
-                    ...f,
-                    geometry: {
-                      ...f.geometry,
-                      coordinates: healCoordinates(f.geometry.coordinates)
-                    }
-                  };
-                }
-              }
-              return f;
-            });
-          }
-
           setGeoData(countriesGeo);
           setLoading(false);
           onMapLoaded?.();
@@ -428,9 +397,9 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     const mapW = width * currentZoom;
     const mapH = height * currentZoom;
 
-    // Use generous viewport-linked padding so map transitions and relative zooming do not snap or restrict arbitrarily
-    const padX = Math.max(100, viewW * 0.85);
-    const padY = Math.max(100, viewH * 0.85);
+    // Snoot bounds with tight constraints so world map remains beautifully on screen
+    const padX = Math.max(30, viewW * 0.15);
+    const padY = Math.max(30, viewH * 0.15);
 
     let minX, maxX, minY, maxY;
 
@@ -803,31 +772,150 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           ref={friendsBookRef}
           className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/80 shadow-md select-none font-sans overflow-hidden transition-all flex flex-col w-full"
         >
-          {/* Integrated GLOKO Logo Block */}
+          {/* Integrated GLOKO Logo Block with Next-To-Title Search Trigger */}
           <div
-            className="flex items-center justify-center cursor-pointer select-none border-b border-slate-100 bg-slate-50/45 hover:bg-slate-50 transition-colors py-2.5"
-            onClick={() => {
-              if (onLogoClick) {
-                onLogoClick();
-              } else {
-                onSelectCountry(null, '');
-                handleReset();
-              }
-            }}
-            title="Reset map view and view overall statistics"
+            className="flex items-center justify-between select-none border-b border-slate-100 bg-slate-50/45 py-2.5 px-4 relative"
           >
-            <span 
-              className="text-lg sm:text-xl font-sans font-extrabold uppercase tracking-widest text-[#0a1e35] flex items-center select-none"
+            <div
+              className="flex items-center cursor-pointer"
+              onClick={() => {
+                if (onLogoClick) {
+                  onLogoClick();
+                } else {
+                  onSelectCountry(null, '');
+                  handleReset();
+                }
+              }}
+              title="Reset map view and view overall statistics"
             >
-              GL
-              <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
-                <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
+              <span 
+                className="text-base sm:text-lg font-sans font-extrabold uppercase tracking-widest text-[#0a1e35] flex items-center select-none"
+              >
+                GL
+                <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
+                  <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
+                </span>
+                K
+                <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
+                  <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
+                </span>
               </span>
-              K
-              <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
-                <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
-              </span>
-            </span>
+            </div>
+
+            {/* Next-To-Title Search Toggle */}
+            <div className="relative flex items-center gap-1.5">
+              {isSearchExpanded ? (
+                <div className="flex items-center gap-1 bg-white border border-slate-250/90 rounded-lg px-1.5 py-0.5 w-32 animate-in fade-in slide-in-from-right-1 duration-150">
+                  <input
+                    type="text"
+                    placeholder="Search..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setShowDropdown(true);
+                    }}
+                    autoFocus
+                    className="w-full bg-transparent border-none text-[11px] outline-none font-sans text-slate-800"
+                  />
+                  <button 
+                    onClick={() => {
+                      setIsSearchExpanded(false);
+                      setSearchQuery('');
+                      setShowDropdown(false);
+                    }}
+                    className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-650 cursor-pointer"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIsSearchExpanded(true)}
+                  className="p-1 hover:bg-slate-150/55 rounded-lg text-slate-500 hover:text-indigo-650 transition-colors cursor-pointer flex items-center justify-center"
+                  title="Search map..."
+                >
+                  <Search className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Next-To-Title search dropdown results, absolute overlayed below Logo Block */}
+            {showDropdown && searchQuery.trim() && (
+              <div className="absolute top-[100%] left-0 right-0 max-h-72 overflow-y-auto bg-white border-b border-slate-200 shadow-xl z-50 divide-y divide-slate-100/90 animate-in fade-in slide-in-from-top-1 duration-150">
+                {filteredCountries.length > 0 && (
+                  <div>
+                    <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 font-sans">
+                      Countries ({filteredCountries.length})
+                    </div>
+                    {filteredCountries.map((country) => {
+                      const count = contactCounts[country.id] || 0;
+                      return (
+                        <button
+                          key={country.id}
+                          onClick={() => {
+                            handleSearchSelect(country.id, country.name);
+                            setIsSearchExpanded(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors font-sans cursor-pointer text-slate-700"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="text-base select-none">{country.flag}</span>
+                            <span className="font-semibold">{country.name}</span>
+                          </span>
+                          {count > 0 ? (
+                            <span className="bg-indigo-50 text-indigo-655 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono">
+                              {count}
+                            </span>
+                          ) : (
+                            <span className="text-[9px] text-slate-400">0</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {filteredFriends.length > 0 && (
+                  <div>
+                    <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 font-sans">
+                      Friends ({filteredFriends.length})
+                    </div>
+                    {filteredFriends.map((friend) => {
+                      const paddedId = friend.countryId.padStart(3, '0');
+                      const country = COUNTRY_BY_ID[paddedId];
+                      const countryFlag = country?.flag || '🗺️';
+                      return (
+                        <button
+                          key={friend.id}
+                          onClick={() => {
+                            handleSearchSelect(paddedId, country?.name || `Country #${paddedId}`);
+                            setIsSearchExpanded(false);
+                          }}
+                          className="w-full text-left px-3 py-2.5 text-xs flex flex-col gap-0.5 hover:bg-slate-50/70 transition-colors font-sans cursor-pointer text-slate-750"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-850">{friend.name}</span>
+                            <span className="text-[10px] select-none flex items-center gap-1 bg-indigo-55 text-indigo-650 px-1.5 py-0.5 rounded font-bold font-sans">
+                              <span>{countryFlag}</span>
+                              <span>{country?.name || 'World'}</span>
+                            </span>
+                          </div>
+                          {friend.city && (
+                            <span className="text-[9px] text-slate-400 font-normal">📍 {friend.city}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {filteredCountries.length === 0 && filteredFriends.length === 0 && (
+                  <div className="py-3 px-4 text-xs text-slate-400 text-center font-sans">
+                    No country or friend matches
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Header section which expands/collapses the popup inline */}
@@ -931,97 +1019,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
             </div>
           )}
         </div>
-
-        {/* Floating Google-Maps-Style Search Bar */}
-        <div className="relative w-full shadow-md rounded-xl bg-white border border-slate-200/80">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search country or friend name..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setShowDropdown(true);
-              }}
-              onFocus={() => setShowDropdown(true)}
-              className="w-full text-xs py-2.5 pl-8 pr-4 bg-white/95 rounded-xl border-none outline-none focus:ring-1 focus:ring-indigo-500/30 transition-all font-sans"
-            />
-            <Search className="absolute left-2.5 top-3 h-3.5 w-3.5 text-slate-400" />
-          </div>
-
-          {showDropdown && searchQuery.trim() && (
-            <div className="absolute left-0 right-0 mt-1.5 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg z-50 divide-y divide-slate-100/90">
-              {filteredCountries.length > 0 && (
-                <div>
-                  <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 font-sans">
-                    Countries ({filteredCountries.length})
-                  </div>
-                  {filteredCountries.map((country) => {
-                    const count = contactCounts[country.id] || 0;
-                    return (
-                      <button
-                        key={country.id}
-                        onClick={() => handleSearchSelect(country.id, country.name)}
-                        className="w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors font-sans cursor-pointer"
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className="text-base select-none">{country.flag}</span>
-                          <span className="font-semibold text-slate-700">{country.name}</span>
-                        </span>
-                        {count > 0 ? (
-                          <span className="bg-indigo-50 text-indigo-650 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono">
-                            {count}
-                          </span>
-                        ) : (
-                          <span className="text-[9px] text-slate-400">0</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {filteredFriends.length > 0 && (
-                <div>
-                  <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 font-sans">
-                    Friends ({filteredFriends.length})
-                  </div>
-                  {filteredFriends.map((friend) => {
-                    const paddedId = friend.countryId.padStart(3, '0');
-                    const country = COUNTRY_BY_ID[paddedId];
-                    const countryFlag = country?.flag || '🗺️';
-                    return (
-                      <button
-                        key={friend.id}
-                        onClick={() => handleSearchSelect(paddedId, country?.name || `Country #${paddedId}`)}
-                        className="w-full text-left px-3 py-2.5 text-xs flex flex-col gap-0.5 hover:bg-slate-50/70 transition-colors font-sans cursor-pointer"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-800">{friend.name}</span>
-                          <span className="text-[10px] select-none flex items-center gap-1 bg-indigo-50 text-indigo-650 px-1.5 py-0.5 rounded font-bold font-sans">
-                            <span>{countryFlag}</span>
-                            <span>{country?.name || 'World'}</span>
-                          </span>
-                        </div>
-                        {friend.city && (
-                          <span className="text-[9px] text-slate-400">📍 {friend.city}</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {filteredCountries.length === 0 && filteredFriends.length === 0 && (
-                <div className="py-3 px-4 text-xs text-slate-400 text-center font-sans">
-                  No country or friend matches
-                </div>
-              )}
-            </div>
-          )}
-
-
-        </div>
       </div>
 
       {/* Dynamic selection banner at bottom-right matching instructions */}
@@ -1043,7 +1040,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
         onTouchMove={(e) => e.stopPropagation()}
         onTouchEnd={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
-        className="absolute top-1/2 -translate-y-1/2 right-4 flex flex-col gap-1.5 z-40"
+        className="absolute top-1/2 -translate-y-1/2 right-4 hidden sm:flex flex-col gap-1.5 z-40"
       >
         <button
           onClick={handleZoomIn}

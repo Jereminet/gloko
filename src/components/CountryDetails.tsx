@@ -119,76 +119,78 @@ export default function CountryDetails({
                   <span className="text-xl leading-none select-none">{countryInfo?.flag || '🗺️'}</span>
                   <h3 className="font-bold text-slate-800 text-sm tracking-tight">{countryName}</h3>
                   
-                  {/* Small Customizable Color Button Next to name */}
-                  <div className="relative flex items-center">
-                    <button
-                      onClick={() => setShowColorPicker(!showColorPicker)}
-                      className="p-1 hover:bg-slate-200/60 text-slate-500 rounded-md transition-all flex items-center justify-center cursor-pointer"
-                      title="Choose map display color"
-                    >
-                      <Palette 
-                        className="h-4 w-4" 
-                        style={{ color: currentColor || getNiceDefaultColorForCountry(countryId) }} 
-                      />
-                    </button>
-                    
-                    {/* Micro absolute floating preset picker */}
-                    {showColorPicker && (
-                      <div className="absolute top-full left-0 mt-1.5 bg-white border border-slate-200 shadow-lg rounded-xl p-2.5 z-50 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1 w-max">
-                        {[
-                          '#6366f1', // Indigo
-                          '#3b82f6', // Sapphire Blue
-                          '#10b981', // Emerald
-                          '#f59e0b', // Amber Gold
-                          '#ef4444', // Crimson Red
-                          '#ec4899', // Rose Orchid
-                          '#8b5cf6', // Lavender Purple
-                          '#14b8a6', // Cool Mint
-                        ].map((presetColor) => (
-                          <button
-                            key={presetColor}
-                            onClick={() => {
-                              onColorChange && onColorChange(presetColor);
-                              setShowColorPicker(false);
+                  {/* Small Customizable Color Button Next to name - Only available if friends exist in country */}
+                  {countryContacts.length > 0 && (
+                    <div className="relative flex items-center">
+                      <button
+                        onClick={() => setShowColorPicker(!showColorPicker)}
+                        className="p-1 hover:bg-slate-200/60 text-slate-500 rounded-md transition-all flex items-center justify-center cursor-pointer"
+                        title="Choose map display color"
+                      >
+                        <Palette 
+                          className="h-4 w-4" 
+                          style={{ color: currentColor || getNiceDefaultColorForCountry(countryId) }} 
+                        />
+                      </button>
+                      
+                      {/* Micro absolute floating preset picker */}
+                      {showColorPicker && (
+                        <div className="absolute top-full left-0 mt-1.5 bg-white border border-slate-200 shadow-lg rounded-xl p-2.5 z-50 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1 w-max">
+                          {[
+                            '#6366f1', // Indigo
+                            '#3b82f6', // Sapphire Blue
+                            '#10b981', // Emerald
+                            '#f59e0b', // Amber Gold
+                            '#ef4444', // Crimson Red
+                            '#ec4899', // Rose Orchid
+                            '#8b5cf6', // Lavender Purple
+                            '#14b8a6', // Cool Mint
+                          ].map((presetColor) => (
+                            <button
+                              key={presetColor}
+                              onClick={() => {
+                                onColorChange && onColorChange(presetColor);
+                                setShowColorPicker(false);
+                              }}
+                              style={{ backgroundColor: presetColor }}
+                              className={`w-4.5 h-4.5 rounded-full transition-transform hover:scale-115 cursor-pointer shadow-xs border border-white ${
+                                currentColor === presetColor ? 'ring-2 ring-indigo-505/80 scale-110' : ''
+                              }`}
+                            />
+                          ))}
+                          
+                          {/* Native custom color bubble tool */}
+                          <label 
+                            className="w-4.5 h-4.5 rounded-full border border-slate-200 shadow-xs relative cursor-pointer hover:scale-115 transition-transform flex items-center justify-center overflow-hidden"
+                            style={{
+                              background: 'linear-gradient(45deg, #f06a6a, #f0c36a, #6af07a, #6ad0f0, #966af0, #f06adc)'
                             }}
-                            style={{ backgroundColor: presetColor }}
-                            className={`w-4.5 h-4.5 rounded-full transition-transform hover:scale-115 cursor-pointer shadow-xs border border-white ${
-                              currentColor === presetColor ? 'ring-2 ring-indigo-505/80 scale-110' : ''
-                            }`}
-                          />
-                        ))}
-                        
-                        {/* Native custom color bubble tool */}
-                        <label 
-                          className="w-4.5 h-4.5 rounded-full border border-slate-200 shadow-xs relative cursor-pointer hover:scale-115 transition-transform flex items-center justify-center overflow-hidden"
-                          style={{
-                            background: 'linear-gradient(45deg, #f06a6a, #f0c36a, #6af07a, #6ad0f0, #966af0, #f06adc)'
-                          }}
-                          title="Custom color..."
-                        >
-                          <input
-                            type="color"
-                            value={currentColor || '#6366f1'}
-                            onChange={(e) => onColorChange && onColorChange(e.target.value)}
-                            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                          />
-                          <span className="text-[9px] text-white font-bold leading-none select-none">+</span>
-                        </label>
-
-                        {currentColor && (
-                          <button
-                            onClick={() => {
-                              onColorChange && onColorChange('');
-                              setShowColorPicker(false);
-                            }}
-                            className="px-2 py-0.5 border border-slate-205 bg-slate-50 hover:bg-slate-100 rounded text-[9px] font-sans font-semibold text-slate-500 transition-colors cursor-pointer"
+                            title="Custom color..."
                           >
-                            Reset
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                            <input
+                              type="color"
+                              value={currentColor || '#6366f1'}
+                              onChange={(e) => onColorChange && onColorChange(e.target.value)}
+                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                            />
+                            <span className="text-[9px] text-white font-bold leading-none select-none">+</span>
+                          </label>
+
+                          {currentColor && (
+                            <button
+                              onClick={() => {
+                                onColorChange && onColorChange('');
+                                setShowColorPicker(false);
+                              }}
+                              className="px-2 py-0.5 border border-slate-205 bg-slate-50 hover:bg-slate-100 rounded text-[9px] font-sans font-semibold text-slate-500 transition-colors cursor-pointer"
+                            >
+                              Reset
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <span className="text-[10px] text-slate-400 font-sans font-medium pl-6">
                   {countryInfo?.continent || 'Globe'}
