@@ -3,10 +3,12 @@ import { Contact } from './types';
 import WorldMap from './components/WorldMap';
 import CountryDetails from './components/CountryDetails';
 import Loader from './components/Loader';
-import { Globe, RefreshCw, Trash2, Heart, Download } from 'lucide-react';
+import SettingsDrawer from './components/SettingsDrawer';
+import { Globe, RefreshCw, Trash2, Heart, Download, Settings } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db, googleProvider, signInWithPopup, signOut, OperationType, handleFirestoreError } from './firebase';
 import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { AppLanguage, TRANSLATIONS } from './utils/translations';
 
 const LOCAL_STORAGE_KEY = 'travel_contacts_map_journal';
 
@@ -58,6 +60,14 @@ export default function App() {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
+  const [language, setLanguage] = useState<AppLanguage>(() => {
+    const saved = localStorage.getItem('gloko_app_language');
+    if (saved === 'en' || saved === 'es' || saved === 'fr' || saved === 'de' || saved === 'zh') {
+      return saved as AppLanguage;
+    }
+    return 'en';
+  });
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -67,6 +77,11 @@ export default function App() {
     isDestructive?: boolean;
   } | null>(null);
 
+  const handleLanguageChange = (lang: AppLanguage) => {
+    setLanguage(lang);
+    localStorage.setItem('gloko_app_language', lang);
+  };
+
   // Track Firebase Authentication State
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -74,6 +89,34 @@ export default function App() {
       setIsAuthLoading(false);
     });
     return () => unsubscribe();
+  }, []);
+
+  // Listen to keyboard dismissal & text input blur on mobile to reset viewport scale to 1.0 (reverses auto-zoom)
+  useEffect(() => {
+    const handleFocusOut = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') &&
+        (target as HTMLInputElement).type !== 'checkbox' &&
+        (target as HTMLInputElement).type !== 'radio' &&
+        (target as HTMLInputElement).type !== 'color'
+      ) {
+        // Temporarily restrict scaling briefly then restore default configuration
+        const viewportMeta = document.querySelector('meta[name="viewport"]');
+        if (viewportMeta) {
+          viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes');
+          setTimeout(() => {
+            viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0');
+          }, 350);
+        }
+      }
+    };
+
+    document.addEventListener('focusout', handleFocusOut);
+    return () => {
+      document.removeEventListener('focusout', handleFocusOut);
+    };
   }, []);
 
   // Sync state from LocalStorage (Guest Mode) or Cloud Firestore (Cloud Sync Mode)
@@ -337,15 +380,59 @@ export default function App() {
     }
   };
 
+  // Export friends book into a beautifully formatted CSV listed per country
+  const handleExportCSV = () => {
+    try {
+      // Sort contacts by country name, then friend name
+      const sortedContacts = [...contacts].sort((a, b) => {
+        const countryCompare = (a.countryName || '').localeCompare(b.countryName || '');
+        if (countryCompare !== 0) return countryCompare;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+
+      const escapeCSVCell = (val: string | undefined | null) => {
+        if (!val) return '""';
+        const str = String(val);
+        return `"${str.replace(/"/g, '""')}"`;
+      };
+
+      const headers = ["Country Name", "Country Code", "Friend Name", "City/Region", "Contact Info", "Notes", "Date Created"];
+      const csvLines = [
+        headers.join(','),
+        ...sortedContacts.map((contact) => [
+          escapeCSVCell(contact.countryName),
+          escapeCSVCell(contact.countryId),
+          escapeCSVCell(contact.name),
+          escapeCSVCell(contact.city),
+          escapeCSVCell(contact.contactInfo),
+          escapeCSVCell(contact.notes),
+          escapeCSVCell(contact.createdAt)
+        ].join(','))
+      ];
+
+      const csvContent = "\uFEFF" + csvLines.join('\r\n'); // Add UTF-8 BOM for Microsoft Excel compatibility
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", url);
+      downloadAnchor.setAttribute("download", `gloko_friends_book_export_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Failed to export CSV:', e);
+    }
+  };
+
   // Reset entire journal
   const handleResetJournal = () => {
+    const t = TRANSLATIONS[language] || TRANSLATIONS.en;
     setConfirmConfig({
       isOpen: true,
-      title: 'Reset Map Data',
-      message: user 
-        ? 'Are you sure you want to reset your travel network? This will clear all custom database entries, clear custom colors, and restore the initial example friends.'
-        : 'Are you sure you want to reset your travel network? This will restore the initial examples, clear all custom colors, and clear all custom entries!',
-      confirmLabel: 'Reset Everything',
+      title: t.confirmResetTitle,
+      message: user ? t.confirmResetMessageUser : t.confirmResetMessageGuest,
+      confirmLabel: t.resetEverything,
       isDestructive: true,
       onConfirm: async () => {
         if (user) {
@@ -408,104 +495,33 @@ export default function App() {
       {/* Absolute fullscreen loader overlay that sits on top when loading */}
       {(!hasLoaded || !isMapLoaded) && <Loader />}
 
-      {/* Floating Action Header Panel (User Profile bubble on top-right) */}
+      {/* Floating Settings Gear Menu TRIGGER on bottom-left */}
       {hasLoaded && isMapLoaded && (
-        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-50 flex items-center gap-3">
-          {isAuthLoading ? (
-            <div className="w-8 h-8 rounded-full border-2 border-indigo-600/30 border-t-indigo-600 animate-spin" />
-          ) : user ? (
-            <div className="relative">
-              {/* Close dropdown on click outside with backdrop blur of entire map behind it */}
-              {showUserMenu && (
-                <div 
-                  className="fixed inset-0 z-40 cursor-default bg-slate-900/15 backdrop-blur-sm animate-in fade-in duration-300" 
-                  onClick={() => setShowUserMenu(false)} 
-                />
-              )}
-              
-              {/* Bubble button trigger showing just the user profile photo */}
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center justify-center focus:outline-none rounded-full cursor-pointer transition-all hover:scale-105 active:scale-95 ring-offset-2 ring-indigo-600/10 focus-visible:ring-2 z-50 relative animate-in fade-in duration-200"
-                title="View Account"
-              >
-                {user.photoURL ? (
-                  <img 
-                    src={user.photoURL} 
-                    alt="User Profile" 
-                    className="w-9 h-9 sm:w-11 sm:h-11 rounded-full border-2 border-white shadow-md ring-1 ring-slate-200/50"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-indigo-100 text-indigo-750 font-bold flex items-center justify-center text-sm shadow-md border border-indigo-250/20">
-                    {(user.displayName || 'T').charAt(0).toUpperCase()}
-                  </div>
-                )}
-              </button>
-
-              {/* Dropdown Menu Popup Card */}
-              {showUserMenu && (
-                <div className="absolute right-0 mt-2.5 w-52 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-xl p-3 z-50 animate-in fade-in slide-in-from-top-1 duration-150 select-none">
-                  {/* User Identity Details */}
-                  <div className="px-1.5 py-1">
-                    <div className="text-xs font-bold text-slate-900 line-clamp-1">
-                      {user.displayName || 'Traveler'}
-                    </div>
-                    {user.email && (
-                      <div className="text-[10px] text-slate-500 truncate mt-0.5 font-semibold">
-                        {user.email}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="border-t border-slate-100 my-1.5" />
-
-                  {/* Sync Status Badge block */}
-                  <div className="px-2 py-1.5 flex items-center justify-between bg-slate-50/70 border border-slate-100/50 rounded-lg">
-                    <span className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-widest flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Synced
-                    </span>
-                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
-                      Cloud
-                    </span>
-                  </div>
-
-                  <div className="border-t border-slate-100 my-1.5" />
-
-                  {/* Interactive Actions */}
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-2 py-1.5 text-xs text-red-650 hover:bg-red-50/50 hover:text-red-750 font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-2"
-                  >
-                    <svg className="w-3.5 h-3.5 stroke-current fill-none shrink-0" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                      <polyline points="16 17 21 12 16 7"></polyline>
-                      <line x1="21" y1="12" x2="9" y2="12"></line>
-                    </svg>
-                    Log Out
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 animate-in fade-in duration-200">
-              <span className="hidden md:inline text-[9px] text-slate-500 font-semibold uppercase tracking-widest leading-none mr-1 bg-white/70 backdrop-blur-xs px-2.5 py-1.5 rounded-full border border-slate-200/50 shadow-xs">
-                Guest Mode
-              </span>
-              <button
-                onClick={handleLogin}
-                className="px-3.5 py-1.5 sm:px-4.5 sm:py-2.5 bg-slate-900/90 backdrop-blur-xs hover:bg-slate-950 active:scale-95 text-white rounded-full text-xs font-extrabold tracking-tight shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2 border border-slate-800"
-              >
-                <svg className="w-3.5 h-3.5 fill-white shrink-0" viewBox="0 0 24 24">
-                  <path d="M12.24 10.285V13.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.529-8 7.859-8c2.46 0 4.105 1.025 5.047 1.926l2.427-2.334C17.955 2.192 15.34 1 12.24 1 6.033 1 1 6.033 1 12.24s5.033 11.24 11.24 11.24c6.478 0 10.793-4.537 10.793-10.986 0-.742-.08-1.302-.172-1.859H12.24z"/>
-                </svg>
-                Connect
-              </button>
-            </div>
-          )}
+        <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-50 pointer-events-auto">
+          <button
+            onClick={() => setShowSettingsDrawer(true)}
+            className="flex items-center justify-center w-10.5 h-10.5 sm:w-11 sm:h-11 bg-white hover:bg-slate-50 text-[#0a1e35] active:scale-95 rounded-full shadow-lg border border-slate-200 transition-all cursor-pointer group"
+            title="Open Settings"
+          >
+            <Settings className="w-5.5 h-5.5 stroke-[1.6] text-slate-700 group-hover:text-indigo-600 transition-colors" />
+          </button>
         </div>
       )}
+
+      {/* Left Hand Options Menu Drawer Container */}
+      <SettingsDrawer
+        isOpen={showSettingsDrawer}
+        onClose={() => setShowSettingsDrawer(false)}
+        user={user}
+        isAuthLoading={isAuthLoading}
+        contacts={contacts}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
+        onExportCSV={handleExportCSV}
+        onResetJournal={handleResetJournal}
+        language={language}
+        onLanguageChange={handleLanguageChange}
+      />
 
       {/* Center Dialog Popup for Selected Country */}
       {selectedCountryId && (
@@ -560,7 +576,7 @@ export default function App() {
                 onClick={() => setConfirmConfig(null)}
                 className="px-4 py-2 hover:bg-slate-50 text-slate-500 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
               >
-                Cancel
+                {TRANSLATIONS[language]?.cancel || 'Cancel'}
               </button>
               <button
                 onClick={confirmConfig.onConfirm}

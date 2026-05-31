@@ -23,6 +23,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   onLogoClick,
 }, ref) => {
   const [geoData, setGeoData] = useState<any>(null);
+  const [landBounds, setLandBounds] = useState<{ minX: number; maxX: number; minY: number; maxY: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +40,33 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     .translate([width / 2, height / 2 + 35]);
 
   const pathGenerator = d3.geoPath().projection(projection);
+
+  // Compute absolute land bounding box under current projection
+  useEffect(() => {
+    if (!geoData || !geoData.features || geoData.features.length === 0) return;
+    
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    geoData.features.forEach((feat: any) => {
+      const bounds = pathGenerator.bounds(feat);
+      if (bounds) {
+        const [[x0, y0], [x1, y1]] = bounds;
+        if (!isNaN(x0) && !isNaN(y0) && !isNaN(x1) && !isNaN(y1)) {
+          if (x0 < minX) minX = x0;
+          if (x1 > maxX) maxX = x1;
+          if (y0 < minY) minY = y0;
+          if (y1 > maxY) maxY = y1;
+        }
+      }
+    });
+
+    if (minX !== Infinity && maxX !== -Infinity) {
+      setLandBounds({ minX, maxX, minY, maxY });
+    }
+  }, [geoData]);
 
   // Track map transform (Zoom/Pan state) focusing on Niger on load
   const [zoom, setZoom] = useState(1.25);
@@ -114,11 +142,13 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     function handleClickOutside(event: MouseEvent) {
       if (friendsBookRef.current && !friendsBookRef.current.contains(event.target as Node)) {
         setShowStatsDetail(false);
+        setIsSearchExpanded(false);
       }
     }
     function handleTouchOutside(event: TouchEvent) {
       if (friendsBookRef.current && !friendsBookRef.current.contains(event.target as Node)) {
         setShowStatsDetail(false);
+        setIsSearchExpanded(false);
       }
     }
 
@@ -395,37 +425,66 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     const viewW = width;
     const viewH = height;
 
-    const mapW = width * currentZoom;
-    const mapH = height * currentZoom;
-
-    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
-    // Relaxed padding bounds on mobile so world map remains beautifully and easily pannable on screen
-    const padX = isMobile ? viewW * 0.65 : Math.max(30, viewW * 0.15);
-    const padY = isMobile ? viewH * 0.65 : Math.max(30, viewH * 0.15);
-
-    let minX, maxX, minY, maxY;
-
-    if (mapW > viewW) {
-      minX = viewW - mapW - padX;
-      maxX = padX;
-    } else {
-      const defaultX = (viewW - mapW) / 2;
-      minX = defaultX - padX;
-      maxX = defaultX + padX;
+    if (!landBounds) {
+      // Fallback if bounds are not computed yet
+      const mapW = width * currentZoom;
+      const mapH = height * currentZoom;
+      let minX = viewW - mapW;
+      let maxX = 0;
+      let minY = viewH - mapH;
+      let maxY = 0;
+      if (mapW < viewW) {
+        minX = (viewW - mapW) / 2;
+        maxX = minX;
+      }
+      if (mapH < viewH) {
+        minY = (viewH - mapH) / 2;
+        maxY = minY;
+      }
+      return {
+        x: Math.max(minX, Math.min(maxX, pos.x)),
+        y: Math.max(minY, Math.min(maxY, pos.y)),
+      };
     }
 
-    if (mapH > viewH) {
-      minY = viewH - mapH - padY;
-      maxY = padY;
+    // Adapt limits: Use 42% of viewport scale as a symmetric safe padding.
+    // This aligns the distance beautifully, prevents seeing only water,
+    // and guarantees that any country near extreme edges can be dragged up to 42% of the screen width/height,
+    // making them fully visible and centerable!
+    const padX = viewW * 0.42;
+    const padY = viewH * 0.42;
+
+    // Projected land width and height
+    const landWidth = (landBounds.maxX - landBounds.minX) * currentZoom;
+    const landHeight = (landBounds.maxY - landBounds.minY) * currentZoom;
+
+    let targetX = pos.x;
+    let targetY = pos.y;
+
+    // Horizontal limit constraints
+    if (landWidth <= viewW - 2 * padX) {
+      // If land fits in view with margin, center it horizontally
+      targetX = (viewW - (landBounds.maxX + landBounds.minX) * currentZoom) / 2;
     } else {
-      const defaultY = (viewH - mapH) / 2;
-      minY = defaultY - padY;
-      maxY = defaultY + padY;
+      // Otherwise, restrict panning symmetric to the country bounds.
+      const minX = viewW - padX - landBounds.maxX * currentZoom;
+      const maxX = padX - landBounds.minX * currentZoom;
+      targetX = Math.max(minX, Math.min(maxX, pos.x));
+    }
+
+    // Vertical limit constraints
+    if (landHeight <= viewH - 2 * padY) {
+      // If land fits in view with margin, center it vertically
+      targetY = (viewH - (landBounds.maxY + landBounds.minY) * currentZoom) / 2;
+    } else {
+      const minY = viewH - padY - landBounds.maxY * currentZoom;
+      const maxY = padY - landBounds.minY * currentZoom;
+      targetY = Math.max(minY, Math.min(maxY, pos.y));
     }
 
     return {
-      x: Math.max(minX, Math.min(pos.x, maxX)),
-      y: Math.max(minY, Math.min(pos.y, maxY)),
+      x: targetX,
+      y: targetY,
     };
   };
 
@@ -1090,14 +1149,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           style={{ pointerEvents: 'auto' }}
         >
           <defs>
-            {/* Handcrafted sand/eggshall/paper grain land pattern overlay */}
-            <pattern id="land-texture" width="24" height="24" patternUnits="userSpaceOnUse">
-              <circle cx="3" cy="3" r="0.6" fill="#8c7755" opacity="0.10" />
-              <circle cx="15" cy="15" r="0.6" fill="#8c7755" opacity="0.10" />
-              <circle cx="9" cy="8" r="0.5" fill="#8c7755" opacity="0.06" />
-              <circle cx="21" cy="4" r="0.5" fill="#8c7755" opacity="0.06" />
-            </pattern>
-
           </defs>
 
           <g 
@@ -1185,14 +1236,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                     onMouseEnter={(e) => handleCountryMouseEnter(e, feature)}
                     onMouseMove={(e) => handleCountryMouseMove(e, feature)}
                     onMouseLeave={handleCountryMouseLeave}
-                  />
-                  {/* Paper land texture overlay */}
-                  <path
-                    d={pathData}
-                    fill="url(#land-texture)"
-                    stroke="none"
-                    className="pointer-events-none select-none"
-                    style={{ opacity: isSelected ? 0.35 : 0.75 }}
                   />
                 </g>
               );

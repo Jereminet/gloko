@@ -146,9 +146,8 @@ export default function Loader() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.35, ease: "easeInOut" }}
-              className="text-xs font-sans font-semibold text-indigo-600 flex items-center gap-1.5"
+              className="text-xs font-sans font-semibold text-slate-950 flex items-center justify-center"
             >
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-505 animate-ping mr-0.5" />
               {statuses[statusIndex]}
             </motion.p>
           </div>
