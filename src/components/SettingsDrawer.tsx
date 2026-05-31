@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Download, Trash2, LogOut, Settings, ShieldAlert, Globe, ArrowRight } from 'lucide-react';
+import { X, Download, Trash2, LogOut, Settings, ShieldAlert, Globe, ArrowRight, Sparkles } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { Contact } from '../types';
 import { AppLanguage, TRANSLATIONS } from '../utils/translations';
@@ -17,6 +17,7 @@ interface SettingsDrawerProps {
   onResetJournal: () => void;
   language: AppLanguage;
   onLanguageChange: (lang: AppLanguage) => void;
+  onShowGuide: () => void;
 }
 
 export default function SettingsDrawer({
@@ -31,6 +32,7 @@ export default function SettingsDrawer({
   onResetJournal,
   language,
   onLanguageChange,
+  onShowGuide,
 }: SettingsDrawerProps) {
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
 
@@ -81,32 +83,6 @@ export default function SettingsDrawer({
             {/* Scrollable Container */}
             <div className="flex-1 overflow-y-auto p-5 space-y-6">
               
-              {/* Language Selection Selection Area */}
-              <div className="space-y-3">
-                <h3 className="text-[10px] font-extrabold text-slate-4000/90 text-slate-400 uppercase tracking-widest leading-none">
-                  {t.appLanguage}
-                </h3>
-                <div className="bg-slate-50/50 border border-slate-150/60 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-                      <Globe className="w-4 h-4 text-slate-450 stroke-[1.6]" />
-                      <span>{t.languageSelect}</span>
-                    </div>
-                    <select
-                      value={language}
-                      onChange={(e) => onLanguageChange(e.target.value as AppLanguage)}
-                      className="text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                    >
-                      <option value="en">English</option>
-                      <option value="es">Español</option>
-                      <option value="fr">Français</option>
-                      <option value="de">Deutsch</option>
-                      <option value="zh">中文</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
               {/* Profile / Account Integrations Area */}
               <div className="space-y-3.5">
                 <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none">
@@ -118,7 +94,7 @@ export default function SettingsDrawer({
                     <div className="w-6 h-6 rounded-full border-2 border-indigo-600/30 border-t-indigo-600 animate-spin" />
                   </div>
                 ) : user ? (
-                  <div className="bg-slate-50/50 border border-slate-150/60 rounded-2xl p-4 flex flex-col gap-3.5">
+                  <div className="bg-slate-50/50 border border-slate-100 rounded-2xl p-4 flex flex-col gap-3.5">
                     {/* User Identity Info */}
                     <div className="flex items-center gap-3">
                       {user.photoURL ? (
@@ -169,7 +145,7 @@ export default function SettingsDrawer({
                     </button>
                   </div>
                 ) : (
-                  <div className="bg-slate-50/50 border border-slate-150/60 rounded-2xl p-4 flex flex-col gap-3">
+                  <div className="bg-slate-50/50 border border-slate-100 rounded-2xl p-4 flex flex-col gap-3">
                     <p className="text-xs text-slate-500 font-semibold leading-relaxed">
                       {t.guestModeExplanation}
                     </p>
@@ -190,13 +166,61 @@ export default function SettingsDrawer({
                 )}
               </div>
 
+              {/* How it Works Section */}
+              <div className="space-y-3">
+                <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none">
+                  {t.howItWorks}
+                </h3>
+                <div className="bg-indigo-50/20 border border-indigo-100/40 rounded-2xl p-4 space-y-3 hover:border-indigo-100 transition-colors">
+                  <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
+                    {t.howItWorksDesc}
+                  </p>
+                  <button
+                    onClick={() => {
+                      onShowGuide();
+                      onClose();
+                    }}
+                    className="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-750 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer hover:scale-95 active:scale-90"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 stroke-[2.2]" />
+                    {t.showMeAround}
+                  </button>
+                </div>
+              </div>
+
+              {/* Language Selection Selection Area */}
+              <div className="space-y-3">
+                <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none">
+                  {t.appLanguage}
+                </h3>
+                <div className="bg-slate-50/50 border border-slate-100 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                      <Globe className="w-4 h-4 text-slate-450 stroke-[1.6]" />
+                      <span>{t.languageSelect}</span>
+                    </div>
+                    <select
+                      value={language}
+                      onChange={(e) => onLanguageChange(e.target.value as AppLanguage)}
+                      className="text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      <option value="en">English</option>
+                      <option value="es">Español</option>
+                      <option value="fr">Français</option>
+                      <option value="de">Deutsch</option>
+                      <option value="zh">中文</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               {/* CSV Export & Data Utilities */}
               <div className="space-y-3">
                 <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none">
                   {t.dataUtilities}
                 </h3>
 
-                <div className="bg-slate-50/50 border border-slate-150/60 rounded-2xl p-4 space-y-3 hover:border-indigo-100 transition-colors">
+                <div className="bg-slate-50/50 border border-slate-100 rounded-2xl p-4 space-y-3 hover:border-indigo-100 transition-colors">
                   <div className="flex items-start gap-3">
                     <div className="p-2 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-xl shrink-0">
                       <Download className="w-4.5 h-4.5 stroke-[2.2]" />

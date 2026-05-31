@@ -2,6 +2,7 @@ import React from 'react';
 import { Contact } from '../types';
 import { Mail, Phone, MessageSquare, MapPin, Edit, Trash2, Calendar, User } from 'lucide-react';
 import { getCountryInfo } from '../data/countries';
+import { getAppLanguage } from '../utils/translations';
 
 interface ContactCardProps {
   key?: string | number;
@@ -135,14 +136,6 @@ export default function ContactCard({
             <h4 className="font-sans font-semibold text-slate-800 text-sm truncate max-w-full">
               {contact.name}
             </h4>
-            {countryInfo && (
-              <span
-                className="text-xs select-none"
-                title={`${countryInfo.name} flag`}
-              >
-                {countryInfo.flag}
-              </span>
-            )}
           </div>
 
           {/* City / Location */}
@@ -169,11 +162,19 @@ export default function ContactCard({
       <div className="flex items-center justify-between text-[9px] text-slate-400 font-sans border-t border-slate-100 pt-2 pb-0.5 mt-auto">
         <span className="flex items-center gap-1">
           <Calendar className="h-2.5 w-2.5" />
-          <span>Met on {new Date(contact.createdAt).toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-          })}</span>
+          <span>{(() => {
+            const lang = getAppLanguage();
+            const formatted = new Date(contact.createdAt).toLocaleDateString(lang, {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric'
+            });
+            if (lang === 'es') return `Conocido el ${formatted}`;
+            if (lang === 'fr') return `Rencontré le ${formatted}`;
+            if (lang === 'de') return `Am ${formatted} getroffen`;
+            if (lang === 'zh') return `结识于 ${formatted}`;
+            return `Met on ${formatted}`;
+          })()}</span>
         </span>
         <span className="text-slate-300 font-mono text-[8px]">ID: {contact.id.substring(0, 4).toUpperCase()}</span>
       </div>

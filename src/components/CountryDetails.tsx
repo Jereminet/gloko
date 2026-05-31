@@ -5,6 +5,7 @@ import { getCountryInfo } from '../data/countries';
 import ContactCard from './ContactCard';
 import ContactForm from './ContactForm';
 import { UserPlus, X, Globe, MapPin, Palette, Search } from 'lucide-react';
+import { getTranslation, getAppLanguage } from '../utils/translations';
 
 interface CountryDetailsProps {
   countryId: string;
@@ -29,6 +30,62 @@ export default function CountryDetails({
   currentColor = '',
   onColorChange,
 }: CountryDetailsProps) {
+  const t = getTranslation();
+
+  const getAddFriendLabel = () => {
+    const lang = getAppLanguage();
+    if (lang === 'es') return `Agregar Amigo en ${countryName}`;
+    if (lang === 'fr') return `Ajouter un ami en ${countryName}`;
+    if (lang === 'de') return `Freund in ${countryName} hinzufügen`;
+    if (lang === 'zh') return `在${countryName}添加好友`;
+    return `Add Friend in ${countryName}`;
+  };
+
+  const getSearchPlaceholder = () => {
+    const lang = getAppLanguage();
+    if (lang === 'es') return "Buscar amigos en este país...";
+    if (lang === 'fr') return "Rechercher des amis dans ce pays...";
+    if (lang === 'de') return "Freunde in diesem Land suchen...";
+    if (lang === 'zh') return "搜索该国家的好友...";
+    return "Search friends in this country...";
+  };
+
+  const getFriendsListedLabel = (num: number) => {
+    const lang = getAppLanguage();
+    if (lang === 'es') return `Amigos registrados (${num})`;
+    if (lang === 'fr') return `Amis répertoriés (${num})`;
+    if (lang === 'de') return `Gelistete Freunde (${num})`;
+    if (lang === 'zh') return `已登记名单 (${num})`;
+    return `Friends listed (${num})`;
+  };
+
+  const getFilteredLabel = () => {
+    const lang = getAppLanguage();
+    if (lang === 'es') return "Filtrado";
+    if (lang === 'fr') return "Filtré";
+    if (lang === 'de') return "Gefiltert";
+    if (lang === 'zh') return "已过滤";
+    return "Filtered";
+  };
+
+  const getNoFriendsMatchLabel = (query: string) => {
+    const lang = getAppLanguage();
+    if (lang === 'es') return `Ningún amigo coincide con "${query}" en este país.`;
+    if (lang === 'fr') return `Aucun ami ne correspond à "${query}" dans ce pays.`;
+    if (lang === 'de') return `Keine Freunde stimmen mit "${query}" in diesem Land überein.`;
+    if (lang === 'zh') return `该国家没有匹配 "${query}" 的好友。`;
+    return `No friends match "${query}" inside this country.`;
+  };
+
+  const getNoFriendsInCountryHeader = () => {
+    const lang = getAppLanguage();
+    if (lang === 'es') return "Sin amigos en este país";
+    if (lang === 'fr') return "Pas d'amis dans ce pays";
+    if (lang === 'de') return "Keine Freunde in diesem Land";
+    if (lang === 'zh') return "此国家/地区暂无好友";
+    return "No friends in this country";
+  };
+
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -135,7 +192,7 @@ export default function CountryDetails({
                       
                       {/* Micro absolute floating preset picker */}
                       {showColorPicker && (
-                        <div className="absolute top-full right-0 sm:left-0 sm:right-auto mt-1.5 bg-white border border-slate-200 shadow-lg rounded-xl p-2.5 z-50 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1 w-max">
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 mt-1.5 bg-white border border-slate-200 shadow-lg rounded-xl p-2.5 z-50 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1 w-max">
                           {[
                             '#6366f1', // Indigo
                             '#3b82f6', // Sapphire Blue
@@ -184,7 +241,7 @@ export default function CountryDetails({
                               }}
                               className="px-2 py-0.5 border border-slate-205 bg-slate-50 hover:bg-slate-100 rounded text-[9px] font-sans font-semibold text-slate-500 transition-colors cursor-pointer"
                             >
-                              Reset
+                              {getAppLanguage() === 'es' ? 'Restablecer' : getAppLanguage() === 'fr' ? 'Réinitialiser' : getAppLanguage() === 'de' ? 'Zurücksetzen' : getAppLanguage() === 'zh' ? '重置' : 'Reset'}
                             </button>
                           )}
                         </div>
@@ -218,14 +275,14 @@ export default function CountryDetails({
                   className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all transform hover:-translate-y-0.2 cursor-pointer"
                 >
                   <UserPlus className="h-4 w-4" />
-                  <span>Add Friend in {countryName}</span>
+                  <span>{getAddFriendLabel()}</span>
                 </button>
 
                 {/* Micro Input Box to find a friend in active country */}
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Search friends in this country..."
+                    placeholder={getSearchPlaceholder()}
                     value={friendSearchQuery}
                     onChange={(e) => setFriendSearchQuery(e.target.value)}
                     className="w-full text-[11px] pl-8 pr-7 py-2 border border-slate-200 bg-slate-50/70 hover:bg-slate-100/50 focus:bg-white rounded-lg focus:outline-none focus:border-indigo-500 transition-all font-sans text-slate-800"
@@ -247,9 +304,9 @@ export default function CountryDetails({
             {countryContacts.length > 0 ? (
               <div className="flex flex-col gap-3">
                 <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans mb-1 flex items-center justify-between">
-                  <span>Friends listed ({displayedContacts.length})</span>
+                  <span>{getFriendsListedLabel(displayedContacts.length)}</span>
                   {friendSearchQuery.trim() && (
-                    <span className="text-indigo-650 bg-indigo-50/80 px-1 rounded font-semibold text-[8px] normal-case">Filtered</span>
+                    <span className="text-indigo-650 bg-indigo-50/80 px-1 rounded font-semibold text-[8px] normal-case">{getFilteredLabel()}</span>
                   )}
                 </div>
                 
@@ -265,7 +322,7 @@ export default function CountryDetails({
                   ))
                 ) : (
                   <div className="py-8 px-4 text-center text-[11px] text-slate-420 font-sans">
-                    No friends match "{friendSearchQuery}" inside this country.
+                    {getNoFriendsMatchLabel(friendSearchQuery)}
                   </div>
                 )}
               </div>
@@ -275,7 +332,7 @@ export default function CountryDetails({
                 <div className="p-4 bg-indigo-50 text-indigo-500 rounded-2xl mb-4">
                   <Globe className="h-8 w-8 animate-pulse" />
                 </div>
-                <h4 className="font-sans font-semibold text-slate-705 text-sm">No friends in this country</h4>
+                <h4 className="font-sans font-semibold text-slate-705 text-sm">{getNoFriendsInCountryHeader()}</h4>
                 
                 {/* Bigger, Center Add Friend Button */}
                 <button
@@ -283,7 +340,7 @@ export default function CountryDetails({
                   className="mt-6 w-full max-w-xs py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all transform hover:-translate-y-0.2 cursor-pointer"
                 >
                   <UserPlus className="h-4 w-4" />
-                  <span>Add Friend in {countryName}</span>
+                  <span>{getAddFriendLabel()}</span>
                 </button>
               </div>
             )}

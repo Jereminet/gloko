@@ -1,24 +1,66 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { MapPin, Star, Plane } from 'lucide-react';
+import { getAppLanguage } from '../utils/translations';
 
 export default function Loader() {
   const [statusIndex, setStatusIndex] = useState(0);
 
-  const statuses = [
-    'Opening Travel Journal...',
-    'Validating Passport Stamps...',
-    'Scanning Global Coordinate Meridians...',
-    'Rounding the Equator...',
-    'Syncing Globetrotter Network...',
-  ];
+  const getStatuses = () => {
+    const lang = getAppLanguage();
+    if (lang === 'es') {
+      return [
+        'Abriendo diario de viaje...',
+        'Validando sellos de pasaporte...',
+        'Escaneando meridianos de coordenadas globales...',
+        'Cruzando el ecuador...',
+        'Sincronizando red de trotamundos...',
+      ];
+    }
+    if (lang === 'fr') {
+      return [
+        'Ouverture du journal de voyage...',
+        'Validation des tampons de passeport...',
+        'Analyse des méridiens de coordonnées globales...',
+        'Passage de l’équateur...',
+        'Synchronisation du réseau de globe-trotteurs...',
+      ];
+    }
+    if (lang === 'de') {
+      return [
+        'Reisetagebuch wird geöffnet...',
+        'Reisepass-Stempel werden überprüft...',
+        'Globale Koordinaten-Meridiane werden gescannt...',
+        'Äquator wird umrundet...',
+        'Weltenbummler-Netzwerk wird synchronisiert...',
+      ];
+    }
+    if (lang === 'zh') {
+      return [
+        '正在打开旅行日记...',
+        '正在验证护照印章...',
+        '正在扫描全球经纬线...',
+        '正在环绕赤道巡航...',
+        '正在同步全球好友网络...',
+      ];
+    }
+    return [
+      'Opening Travel Journal...',
+      'Validating Passport Stamps...',
+      'Scanning Global Coordinate Meridians...',
+      'Rounding the Equator...',
+      'Syncing Globetrotter Network...',
+    ];
+  };
+
+  const statuses = getStatuses();
 
   useEffect(() => {
     const interval = setInterval(() => {
       setStatusIndex((prev) => (prev + 1) % statuses.length);
     }, 750);
     return () => clearInterval(interval);
-  }, []);
+  }, [statuses.length]);
 
   return (
     <div className="fixed inset-0 min-h-screen bg-[#d4e5f7] flex flex-col items-center justify-center overflow-hidden z-50 select-none">

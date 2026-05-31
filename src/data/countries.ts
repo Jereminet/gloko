@@ -187,22 +187,217 @@ export const COUNTRY_BY_CODE = COUNTRY_LIST.reduce<Record<string, CountryInfo>>(
   return acc;
 }, {});
 
+const COUNTRY_NAME_TRANSLATIONS: Record<string, Record<string, string>> = {
+  "Afghanistan": { es: "Afganistán", fr: "Afghanistan", de: "Afghanistan", zh: "阿富汗" },
+  "Albania": { es: "Albania", fr: "Albanie", de: "Albanien", zh: "阿尔巴尼亚" },
+  "Algeria": { es: "Argelia", fr: "Algérie", de: "Algerien", zh: "阿尔及利亚" },
+  "Angola": { es: "Angola", fr: "Angola", de: "Angola", zh: "安哥拉" },
+  "Argentina": { es: "Argentina", fr: "Argentine", de: "Argentinien", zh: "阿根廷" },
+  "Australia": { es: "Australia", fr: "Australie", de: "Australien", zh: "澳大利亚" },
+  "Austria": { es: "Austria", fr: "Autriche", de: "Österreich", zh: "奥地利" },
+  "Azerbaijan": { es: "Azerbaiyán", fr: "Azerbaïdjan", de: "Aserbaidschan", zh: "阿塞拜疆" },
+  "Bahamas": { es: "Bahamas", fr: "Bahamas", de: "Bahamas", zh: "巴哈马" },
+  "Bangladesh": { es: "Bangladés", fr: "Bangladesh", de: "Bangladesch", zh: "孟加拉国" },
+  "Belarus": { es: "Bielorrusia", fr: "Biélorussie", de: "Belarus", zh: "白俄罗斯" },
+  "Belgium": { es: "Bélgica", fr: "Belgique", de: "Belgien", zh: "比利时" },
+  "Belize": { es: "Belice", fr: "Belize", de: "Belize", zh: "伯利兹" },
+  "Benin": { es: "Benín", fr: "Bénin", de: "Benin", zh: "贝宁" },
+  "Bhutan": { es: "Bután", fr: "Bhoutan", de: "Bhutan", zh: "不丹" },
+  "Bolivia": { es: "Bolivia", fr: "Bolivie", de: "Bolivien", zh: "玻利维亚" },
+  "Bosnia and Herzegovina": { es: "Bosnia y Herzegovina", fr: "Bosnie-Herzégovine", de: "Bosnien und Herzegowina", zh: "波斯尼亚和黑塞哥维那" },
+  "Botswana": { es: "Botsuana", fr: "Botswana", de: "Botsuana", zh: "博茨瓦纳" },
+  "Brazil": { es: "Brasil", fr: "Brésil", de: "Brasilien", zh: "巴西" },
+  "Brunei": { es: "Brunéi", fr: "Brunei", de: "Brunei", zh: "文莱" },
+  "Bulgaria": { es: "Bulgaria", fr: "Bulgarie", de: "Bulgarien", zh: "保加利亚" },
+  "Burkina Faso": { es: "Burkina Faso", fr: "Burkina Faso", de: "Burkina Faso", zh: "布基纳法索" },
+  "Burundi": { es: "Burundi", fr: "Burundi", de: "Burundi", zh: "布隆迪" },
+  "Cambodia": { es: "Camboya", fr: "Cambodge", de: "Kambodscha", zh: "柬埔寨" },
+  "Cameroon": { es: "Camerún", fr: "Cameroun", de: "Kamerun", zh: "喀麦隆" },
+  "Canada": { es: "Canadá", fr: "Canada", de: "Kanada", zh: "加拿大" },
+  "Cape Verde": { es: "Cabo Verde", fr: "Cap-Vert", de: "Kap Verde", zh: "佛得角" },
+  "Central African Republic": { es: "República Centroafricana", fr: "République centrafricaine", de: "Zentralafrikanische Republik", zh: "中非共和国" },
+  "Chad": { es: "Chad", fr: "Tchad", de: "Tschad", zh: "乍得" },
+  "Chile": { es: "Chile", fr: "Chili", de: "Chile", zh: "智利" },
+  "China": { es: "China", fr: "Chine", de: "China", zh: "中国" },
+  "Colombia": { es: "Colombia", fr: "Colombie", de: "Kolumbien", zh: "哥伦比亚" },
+  "Congo": { es: "Congo", fr: "Congo", de: "Kongo", zh: "刚果" },
+  "Democratic Republic of the Congo": { es: "República Democrática del Congo", fr: "République démocratique du Congo", de: "Demokratische Republik Kongo", zh: "刚果民主共和国" },
+  "Comoros": { es: "Comoras", fr: "Comores", de: "Komoren", zh: "科摩罗" },
+  "Costa Rica": { es: "Costa Rica", fr: "Costa Rica", de: "Costa Rica", zh: "哥斯达黎加" },
+  "Ivory Coast": { es: "Costa de Marfil", fr: "Côte d'Ivoire", de: "Elfenbeinküste", zh: "科特迪瓦" },
+  "Croatia": { es: "Croacia", fr: "Croatie", de: "Kroatien", zh: "克罗地亚" },
+  "Cuba": { es: "Cuba", fr: "Cuba", de: "Kuba", zh: "古巴" },
+  "Cyprus": { es: "Chipre", fr: "Chypre", de: "Zypern", zh: "塞浦路斯" },
+  "Czech Republic": { es: "República Checa", fr: "République tchèque", de: "Tschechien", zh: "捷克" },
+  "Denmark": { es: "Dinamarca", fr: "Danemark", de: "Dänemark", zh: "丹麦" },
+  "Djibouti": { es: "Yibutí", fr: "Djibouti", de: "Dschibuti", zh: "吉布提" },
+  "Egypt": { es: "Egipto", fr: "Égypte", de: "Ägypten", zh: "埃及" },
+  "Dominican Republic": { es: "República Dominicana", fr: "République dominicaine", de: "Dominikanische Republik", zh: "多米尼加共和国" },
+  "Ecuador": { es: "Ecuador", fr: "Équateur", de: "Ecuador", zh: "厄瓜多尔" },
+  "El Salvador": { es: "El Salvador", fr: "El Salvador", de: "El Salvador", zh: "萨尔瓦多" },
+  "Equatorial Guinea": { es: "Guinea Ecuatorial", fr: "Guinée équatoriale", de: "Äquatorialguinea", zh: "赤道几内亚" },
+  "Eritrea": { es: "Eritrea", fr: "Érythrée", de: "Eritrea", zh: "厄立特里亚" },
+  "Estonia": { es: "Estonia", fr: "Estonie", de: "Estland", zh: "爱沙尼亚" },
+  "Ethiopia": { es: "Etiopía", fr: "Éthiopie", de: "Äthiopien", zh: "埃塞俄比亚" },
+  "Fiji": { es: "Fiyi", fr: "Fidji", de: "Fidschi", zh: "斐济" },
+  "Finland": { es: "Finlandia", fr: "Finlande", de: "Finnland", zh: "芬兰" },
+  "France": { es: "Francia", fr: "France", de: "Frankreich", zh: "法国" },
+  "Gabon": { es: "Gabón", fr: "Gabon", de: "Gabun", zh: "加蓬" },
+  "Gambia": { es: "Gambia", fr: "Gambie", de: "Gambia", zh: "冈比亚" },
+  "Georgia": { es: "Georgia", fr: "Géorgie", de: "Georgien", zh: "格鲁吉亚" },
+  "Germany": { es: "Alemania", fr: "Allemagne", de: "Deutschland", zh: "德国" },
+  "Ghana": { es: "Ghana", fr: "Ghana", de: "Ghana", zh: "加纳" },
+  "Greece": { es: "Grecia", fr: "Grèce", de: "Griechenland", zh: "希腊" },
+  "Groenland": { es: "Groenlandia", fr: "Groenland", de: "Grönland", zh: "格陵兰" },
+  "Guatemala": { es: "Guatemala", fr: "Guatemala", de: "Guatemala", zh: "危地马拉" },
+  "Guinea": { es: "Guinea", fr: "Guinée", de: "Guinea", zh: "几内亚" },
+  "Guinea-Bissau": { es: "Guinea-Bisáu", fr: "Guinée-Bissau", de: "Guinea-Bissau", zh: "几内亚比绍" },
+  "Guyana": { es: "Guyana", fr: "Guyane", de: "Guyana", zh: "圭亚那" },
+  "Haiti": { es: "Haití", fr: "Haïti", de: "Haiti", zh: "海地" },
+  "Honduras": { es: "Honduras", fr: "Honduras", de: "Honduras", zh: "洪都拉斯" },
+  "Hungary": { es: "Hungría", fr: "Hongrie", de: "Ungarn", zh: "匈牙利" },
+  "Iceland": { es: "Islandia", fr: "Islande", de: "Island", zh: "冰岛" },
+  "India": { es: "India", fr: "Inde", de: "Indien", zh: "印度" },
+  "Indonesia": { es: "Indonesia", fr: "Indonésie", de: "Indonesien", zh: "印度尼西亚" },
+  "Iran": { es: "Irán", fr: "Iran", de: "Iran", zh: "伊朗" },
+  "Iraq": { es: "Irak", fr: "Irak", de: "Irak", zh: "伊拉克" },
+  "Ireland": { es: "Irlanda", fr: "Irlande", de: "Irland", zh: "爱尔兰" },
+  "Israel": { es: "Israel", fr: "Israël", de: "Israel", zh: "以色列" },
+  "Italy": { es: "Italia", fr: "Italie", de: "Italien", zh: "意大​​利" },
+  "Jamaica": { es: "Jamaica", fr: "Jamaïque", de: "Jamaika", zh: "牙买加" },
+  "Japan": { es: "Japón", fr: "Japon", de: "Japan", zh: "日本" },
+  "Jordan": { es: "Jordania", fr: "Jordanie", de: "Jordanien", zh: "约旦" },
+  "Kazakhstan": { es: "Kazajistán", fr: "Kazakhstan", de: "Kasachstan", zh: "哈萨克斯坦" },
+  "Kenya": { es: "Kenia", fr: "Kenya", de: "Kenia", zh: "肯尼亚" },
+  "South Korea": { es: "Corea del Sur", fr: "Corée du Sud", de: "Südkorea", zh: "韩国" },
+  "Kuwait": { es: "Kuwait", fr: "Koweit", de: "Kuwait", zh: "科威特" },
+  "Kyrgyzstan": { es: "Kirguistán", fr: "Kirghizistan", de: "Kirgisistan", zh: "吉尔吉斯斯坦" },
+  "Laos": { es: "Laos", fr: "Laos", de: "Laos", zh: "老挝" },
+  "Latvia": { es: "Letonia", fr: "Lettonie", de: "Lettland", zh: "拉脱维亚" },
+  "Lebanon": { es: "Líbano", fr: "Liban", de: "Libanon", zh: "黎巴嫩" },
+  "Lesotho": { es: "Lesoto", fr: "Lesotho", de: "Lesotho", zh: "莱索托" },
+  "Liberia": { es: "Liberia", fr: "Libéria", de: "Liberia", zh: "利比里亚" },
+  "Libya": { es: "Libia", fr: "Libye", de: "Libyen", zh: "利比亚" },
+  "Lithuania": { es: "Lituania", fr: "Lituanie", de: "Litauen", zh: "立陶宛" },
+  "Luxembourg": { es: "Luxemburgo", fr: "Luxembourg", de: "Luxemburg", zh: "卢森堡" },
+  "North Macedonia": { es: "Macedonia del Norte", fr: "Macédoine du Nord", de: "Nordmazedonien", zh: "北马其顿" },
+  "Madagascar": { es: "Madagascar", fr: "Madagascar", de: "Madagaskar", zh: "马达加斯加" },
+  "Malawi": { es: "Malaui", fr: "Malawi", de: "Malawi", zh: "马拉维" },
+  "Malaysia": { es: "Malasia", fr: "Malaisie", de: "Malaysia", zh: "马来西亚" },
+  "Mali": { es: "Malí", fr: "Mali", de: "Mali", zh: "马里" },
+  "Mauritania": { es: "Mauritania", fr: "Mauritanie", de: "Mauretanien", zh: "毛里塔尼亚" },
+  "Mauritius": { es: "Mauricio", fr: "Maurice", de: "Mauritius", zh: "毛里求斯" },
+  "Mexico": { es: "México", fr: "Mexique", de: "Mexiko", zh: "墨西哥" },
+  "Moldova": { es: "Moldavia", fr: "Moldavie", de: "Moldawien", zh: "摩尔多瓦" },
+  "Mongolia": { es: "Mongolia", fr: "Mongolie", de: "Mongolei", zh: "蒙古" },
+  "Montenegro": { es: "Montenegro", fr: "Monténégro", de: "Montenegro", zh: "黑山" },
+  "Morocco": { es: "Marruecos", fr: "Maroc", de: "Marokko", zh: "摩洛哥" },
+  "Mozambique": { es: "Mozambique", fr: "Mozambique", de: "Mosambik", zh: "莫桑比克" },
+  "Myanmar": { es: "Myanmar", fr: "Myanmar", de: "Myanmar", zh: "缅甸" },
+  "Namibia": { es: "Namibia", fr: "Namibie", de: "Namibia", zh: "纳米比亚" },
+  "Nepal": { es: "Nepal", fr: "Népal", de: "Nepal", zh: "尼泊尔" },
+  "Netherlands": { es: "Países Bajos", fr: "Pays-Bas", de: "Niederlande", zh: "荷兰" },
+  "New Zealand": { es: "Nueva Zelanda", fr: "Nouvelle-Zélande", de: "Neuseeland", zh: "新西兰" },
+  "Nicaragua": { es: "Nicaragua", fr: "Nicaragua", de: "Nicaragua", zh: "尼加拉瓜" },
+  "Niger": { es: "Níger", fr: "Niger", de: "Niger", zh: "尼日尔" },
+  "Nigeria": { es: "Nigeria", fr: "Nigeria", de: "Nigeria", zh: "尼日利亚" },
+  "Norway": { es: "Noruega", fr: "Norvège", de: "Norwegen", zh: "挪威" },
+  "Pakistan": { es: "Pakistán", fr: "Pakistan", de: "Pakistan", zh: "巴基斯坦" },
+  "Panama": { es: "Panamá", fr: "Panama", de: "Panama", zh: "巴拿马" },
+  "Papua New Guinea": { es: "Papúa Nueva Guinea", fr: "Papouasie-Nouvelle-Guinée", de: "Papua-Neuguinea", zh: "巴布亚新几内亚" },
+  "Paraguay": { es: "Paraguay", fr: "Paraguay", de: "Paraguay", zh: "巴拉圭" },
+  "Peru": { es: "Perú", fr: "Pérou", de: "Peru", zh: "秘鲁" },
+  "Philippines": { es: "Filipinas", fr: "Philippines", de: "Philippinen", zh: "菲律宾" },
+  "Poland": { es: "Polonia", fr: "Pologne", de: "Polen", zh: "波兰" },
+  "Portugal": { es: "Portugal", fr: "Portugal", de: "Portugal", zh: "葡萄牙" },
+  "Puerto Rico": { es: "Puerto Rico", fr: "Porto Rico", de: "Puerto Rico", zh: "波多黎各" },
+  "Qatar": { es: "Catar", fr: "Qatar", de: "Katar", zh: "卡塔尔" },
+  "Romania": { es: "Rumania", fr: "Roumanie", de: "Rumänien", zh: "罗马尼亚" },
+  "Russia": { es: "Rusia", fr: "Russie", de: "Russland", zh: "俄罗斯" },
+  "Rwanda": { es: "Ruanda", fr: "Rwanda", de: "Ruanda", zh: "卢旺达" },
+  "Saudi Arabia": { es: "Arabia Saudita", fr: "Arabie saoudite", de: "Saudi-Arabien", zh: "沙特阿拉伯" },
+  "Senegal": { es: "Senegal", fr: "Sénégal", de: "Senegal", zh: "塞内加尔" },
+  "Serbia": { es: "Serbia", fr: "Serbie", de: "Serbien", zh: "塞尔维亚" },
+  "Sierra Leone": { es: "Sierra Leona", fr: "Sierra Leone", de: "Sierra Leone", zh: "塞拉利昂" },
+  "Singapore": { es: "Singapur", fr: "Singapour", de: "Singapur", zh: "新加坡" },
+  "Slovakia": { es: "Eslovaquia", fr: "Slovaquie", de: "Slowakei", zh: "斯洛伐克" },
+  "Slovenia": { es: "Eslovenia", fr: "Slovénie", de: "Slowenien", zh: "斯洛文尼亚" },
+  "Somalia": { es: "Somalia", fr: "Somalie", de: "Somalia", zh: "索马里" },
+  "South Africa": { es: "Sudáfrica", fr: "Afrique du Sud", de: "Südafrika", zh: "南非" },
+  "South Sudan": { es: "Sudán del Sur", fr: "Soudan du Sud", de: "Südsudan", zh: "南苏丹" },
+  "Sao Tome and Principe": { es: "Santo Tomé y Príncipe", fr: "Sao Tomé-et-Principe", de: "São Tomé und Príncipe", zh: "圣多美和普林西比" },
+  "Seychelles": { es: "Seychelles", fr: "Seychelles", de: "Seychellen", zh: "塞舌尔" },
+  "Spain": { es: "España", fr: "Espagne", de: "Spanien", zh: "西班牙" },
+  "Sri Lanka": { es: "Sri Lanka", fr: "Sri Lanka", de: "Sri Lanka", zh: "斯里兰卡" },
+  "Sudan": { es: "Sudán", fr: "Soudan", de: "Sudan", zh: "苏丹" },
+  "Suriname": { es: "Surinam", fr: "Suriname", de: "Suriname", zh: "苏里南" },
+  "Eswatini": { es: "Esuatini", fr: "Eswatini", de: "Eswatini", zh: "斯威士兰" },
+  "Sweden": { es: "Suecia", fr: "Suède", de: "Schweden", zh: "瑞典" },
+  "Switzerland": { es: "Suiza", fr: "Suisse", de: "Schweiz", zh: "瑞士" },
+  "Syria": { es: "Siria", fr: "Syrie", de: "Syrien", zh: "叙利亚" },
+  "Tajikistan": { es: "Tayikistán", fr: "Tadjikistan", de: "Tadschikistan", zh: "塔吉克斯坦" },
+  "Tanzania": { es: "Tanzania", fr: "Tanzanie", de: "Tansania", zh: "坦桑尼亚" },
+  "Thailand": { es: "Tailandia", fr: "Thaïlande", de: "Thailand", zh: "泰国" },
+  "Togo": { es: "Togo", fr: "Togo", de: "Togo", zh: "多哥" },
+  "Trinidad and Tobago": { es: "Trinidad y Tobago", fr: "Trinité-et-Tobago", de: "Trinidad und Tobago", zh: "特立尼达和多巴哥" },
+  "Tunisia": { es: "Túnez", fr: "Tunisie", de: "Tunesien", zh: "突尼斯" },
+  "Turkey": { es: "Turquía", fr: "Turquie", de: "Türkei", zh: "土耳其" },
+  "Turkmenistan": { es: "Turkmenistán", fr: "Turkménistan", de: "Turkmenistan", zh: "土库曼斯坦" },
+  "Uganda": { es: "Uganda", fr: "Ouganda", de: "Uganda", zh: "乌干达" },
+  "Ukraine": { es: "Ucrania", fr: "Ukraine", de: "Ukraine", zh: "乌克兰" },
+  "United Arab Emirates": { es: "Emiratos Árabes Unidos", fr: "Émirats arabes unis", de: "Vereinigte Arabische Emirate", zh: "阿联酋" },
+  "United Kingdom": { es: "Reino Unido", fr: "Royaume-Uni", de: "Vereinigtes Königreich", zh: "英国" },
+  "United States": { es: "Estados Unidos", fr: "États-Unis", de: "Vereinigte Staaten", zh: "美国" },
+  "Uruguay": { es: "Uruguay", fr: "Uruguay", de: "Uruguay", zh: "乌拉圭" },
+  "Uzbekistan": { es: "Uzbekistán", fr: "Ouzbékistan", de: "Usbekistan", zh: "乌兹别克斯坦" },
+  "Venezuela": { es: "Venezuela", fr: "Venezuela", de: "Venezuela", zh: "委内瑞拉" },
+  "Vietnam": { es: "Vietnam", fr: "Viêt Nam", de: "Vietnam", zh: "越南" },
+  "Western Sahara": { es: "Sahara Occidental", fr: "Sahara occidental", de: "Westsahara", zh: "西撒哈拉" },
+  "Yemen": { es: "Yemen", fr: "Yémen", de: "Jemen", zh: "也门" },
+  "Zambia": { es: "Zambia", fr: "Zambie", de: "Sambia", zh: "赞比亚" },
+  "Zimbabwe": { es: "Zimbabue", fr: "Zimbabwe", de: "Simbabwe", zh: "津巴布韦" }
+};
+
+export function getAppLanguage(): string {
+  if (typeof localStorage === 'undefined') return 'en';
+  const saved = localStorage.getItem('gloko_app_language');
+  if (saved === 'en' || saved === 'es' || saved === 'fr' || saved === 'de' || saved === 'zh') {
+    return saved;
+  }
+  return 'en';
+}
+
+export function getTranslatedCountryName(name: string, lang: string): string {
+  if (lang === 'en') return name;
+  const translations = COUNTRY_NAME_TRANSLATIONS[name];
+  if (translations && translations[lang]) {
+    return translations[lang];
+  }
+  return name;
+}
+
 export function getCountryName(id: string): string {
-  // Try normal formatted id (e.g. padding to 3 chars)
   const paddedId = id.toString().padStart(3, '0');
   const found = COUNTRY_BY_ID[paddedId] || COUNTRY_BY_ID[id];
-  return found ? found.name : `Country ${id}`;
+  const originalName = found ? found.name : `Country ${id}`;
+  const lang = getAppLanguage();
+  return getTranslatedCountryName(originalName, lang);
 }
 
 export function getCountryInfo(id: string): CountryInfo | undefined {
   const paddedId = id.toString().padStart(3, '0');
   const found = COUNTRY_BY_ID[paddedId] || COUNTRY_BY_ID[id];
-  if (found) return found;
+  const lang = getAppLanguage();
+  if (found) {
+    return {
+      ...found,
+      name: getTranslatedCountryName(found.name, lang)
+    };
+  }
   
-  // Dynamic fallback for any unlisted map elements so they remain interactive
   return {
     id: paddedId,
-    name: `Country ${paddedId}`,
+    name: getTranslatedCountryName(`Country ${paddedId}`, lang),
     code: "UN",
     flag: "🗺️",
     continent: "Unknown"

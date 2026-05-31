@@ -4,6 +4,7 @@ import { feature } from 'topojson-client';
 import { COUNTRY_BY_ID, getCountryInfo, COUNTRY_LIST } from '../data/countries';
 import { Contact } from '../types';
 import { ZoomIn, ZoomOut, RotateCcw, Search, MapPin, X } from 'lucide-react';
+import { getTranslation, getAppLanguage, getTranslatedOcean } from '../utils/translations';
 
 interface WorldMapProps {
   contacts: Contact[];
@@ -22,6 +23,26 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   onMapLoaded,
   onLogoClick,
 }, ref) => {
+  const t = getTranslation();
+  
+  const getFriendLabel = (count: number) => {
+    const lang = getAppLanguage();
+    if (lang === 'es') return count === 1 ? 'Amigo' : 'Amigos';
+    if (lang === 'fr') return count === 1 ? 'Ami' : 'Amis';
+    if (lang === 'de') return count === 1 ? 'Freund' : 'Freunde';
+    if (lang === 'zh') return '位好友';
+    return count === 1 ? 'Friend' : 'Friends';
+  };
+
+  const getCountriesLabel = () => {
+    const lang = getAppLanguage();
+    if (lang === 'es') return 'Países';
+    if (lang === 'fr') return 'Pays';
+    if (lang === 'de') return 'Länder';
+    if (lang === 'zh') return '国家';
+    return 'Countries';
+  };
+
   const [geoData, setGeoData] = useState<any>(null);
   const [landBounds, setLandBounds] = useState<{ minX: number; maxX: number; minY: number; maxY: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -778,7 +799,13 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
   // Search filtered lists
   const filteredCountries = searchQuery.trim()
-    ? COUNTRY_LIST.filter((country) =>
+    ? COUNTRY_LIST.map((country) => {
+        const localizedName = getCountryInfo(country.id)?.name || country.name;
+        return {
+          ...country,
+          name: localizedName,
+        };
+      }).filter((country) =>
         country.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : [];
@@ -850,7 +877,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 <Search className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
                 <input
                   type="text"
-                  placeholder="Search countries or friends..."
+                  placeholder={getAppLanguage() === 'es' ? 'Buscar países o amigos...' : getAppLanguage() === 'fr' ? 'Rechercher des pays ou des amis...' : getAppLanguage() === 'de' ? 'Länder oder Freunde suchen...' : getAppLanguage() === 'zh' ? '搜索省/国家/好友...' : 'Search countries or friends...'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus
@@ -884,7 +911,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                       handleReset();
                     }
                   }}
-                  title="Reset map view and view overall statistics"
+                  title={t.overallStats}
                 >
                   <span 
                     className="text-base sm:text-lg font-sans font-extrabold uppercase tracking-widest text-[#0a1e35] flex items-center select-none"
@@ -903,7 +930,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 <button
                   onClick={() => setIsSearchExpanded(true)}
                   className="p-1.5 hover:bg-slate-150/55 rounded-lg text-slate-500 hover:text-indigo-650 transition-colors cursor-pointer flex items-center justify-center"
-                  title="Search map..."
+                  title={t.searchFriends}
                 >
                   <Search className="h-4 w-4" />
                 </button>
@@ -920,7 +947,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                     {filteredCountries.length > 0 && (
                       <div className="pb-1.5">
                         <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-105 font-sans">
-                          Countries ({filteredCountries.length})
+                          {getCountriesLabel()} ({filteredCountries.length})
                         </div>
                         {filteredCountries.map((country) => {
                           const count = contactCounts[country.id] || 0;
@@ -954,7 +981,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                     {filteredFriends.length > 0 && (
                       <div className="pb-1.5">
                         <div className="px-3 py-1 bg-slate-50 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-105 font-sans">
-                          Friends ({filteredFriends.length})
+                          {getFriendLabel(filteredFriends.length)} ({filteredFriends.length})
                         </div>
                         {filteredFriends.map((friend) => {
                           const paddedId = friend.countryId.padStart(3, '0');
@@ -988,7 +1015,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
                     {filteredCountries.length === 0 && filteredFriends.length === 0 && (
                       <div className="py-8 px-4 text-xs text-slate-400 text-center font-sans">
-                        No country or friend matches
+                        {getAppLanguage() === 'es' ? 'Ningún país o amigo coincide' : getAppLanguage() === 'fr' ? 'Aucun pays ou ami trouvé' : getAppLanguage() === 'de' ? 'Keine Länder oder Freunde gefunden' : getAppLanguage() === 'zh' ? '未找到匹配的主机/省市/好友' : 'No country or friend matches'}
                       </div>
                     )}
                   </>
@@ -1002,24 +1029,24 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
               <div 
                 onClick={() => setShowStatsDetail((prev) => !prev)}
                 className="px-4 py-3.5 flex flex-col gap-1 cursor-pointer hover:bg-slate-50 transition-colors select-none"
-                title="Click to view/hide friends list"
+                title={showStatsDetail ? t.hideList : t.clickToExpand}
               >
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-[9px] font-bold text-indigo-655 uppercase tracking-widest leading-none">
-                    <span>📖</span> Friends Book
+                    <span>📖</span> {t.friendsBook}
                   </span>
                   <span className="text-[8px] text-slate-400 font-medium font-sans bg-slate-150 px-1.5 py-0.5 rounded">
-                    {showStatsDetail ? 'Hide list' : 'Click to expand'}
+                    {showStatsDetail ? t.hideList : t.clickToExpand}
                   </span>
                 </div>
                 <div className="flex items-baseline gap-1.5 mt-1">
                   <span className="text-base font-bold text-slate-800 leading-none">
                     {new Set(contacts.map((c) => c.countryId.padStart(3, '0'))).size}
                   </span>
-                  <span className="text-[10px] text-slate-400 font-medium">Countries</span>
+                  <span className="text-[10px] text-slate-400 font-medium">{getCountriesLabel()}</span>
                   <span className="text-xs text-slate-400 mx-1">|</span>
                   <span className="text-base font-bold text-slate-800 leading-none">{contacts.length}</span>
-                  <span className="text-[10px] text-slate-400 font-medium font-sans">Friends</span>
+                  <span className="text-[10px] text-slate-400 font-medium font-sans">{getFriendLabel(contacts.length)}</span>
                 </div>
               </div>
 
@@ -1029,7 +1056,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                   <div className="overflow-y-auto flex-grow divide-y divide-slate-100/60 p-1">
                     {contacts.length === 0 ? (
                       <div className="py-8 px-4 text-center text-[11px] text-slate-400">
-                        You don't have any friends recorded yet. Click a country to add!
+                        {getAppLanguage() === 'es' ? 'Aún no tienes amigos registrados. ¡Haz clic en un país para agregarlos!' : getAppLanguage() === 'fr' ? 'Vous n’avez pas encore enregistré d’amis. Cliquez sur un pays pour en ajouter !' : getAppLanguage() === 'de' ? 'Du hast noch keine Freunde eingetragen. Klicke auf ein Land, um einen hinzuzufügen!' : getAppLanguage() === 'zh' ? '您尚未记录任何好友。点击地图上的国家即可添加！' : "You don't have any friends recorded yet. Click a country to add!"}
                       </div>
                     ) : (
                       Object.keys(contactCounts).map((paddedId) => {
@@ -1108,7 +1135,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
         <div className="absolute bottom-3 left-3 right-3 sm:left-auto sm:bottom-4 sm:right-4 bg-white p-3 py-2.5 sm:p-3.5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-2.5 animate-pulse z-10 max-w-[calc(100vw-24px)] text-xs font-semibold text-slate-800">
           <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-indigo-600 rounded-full shrink-0 animate-ping"></div>
           <div className="truncate">
-            {COUNTRY_BY_ID[selectedCountryId]?.flag} {COUNTRY_BY_ID[selectedCountryId]?.name || 'Selected'}: {contactCounts[selectedCountryId] || 0} {contactCounts[selectedCountryId] === 1 ? 'Friend' : 'Friends'}
+            {COUNTRY_BY_ID[selectedCountryId]?.flag} {COUNTRY_BY_ID[selectedCountryId]?.name || t.selectedText}: {contactCounts[selectedCountryId] || 0} {getFriendLabel(contactCounts[selectedCountryId] || 0)}
           </div>
         </div>
       )}
@@ -1176,7 +1203,8 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
             {/* Main Ocean Geographic Text Labels (Zoom-synchronized and beautifully formatted, rendered below continents to naturally truncate/hide overlaps) */}
             <g id="ocean-labels" className="pointer-events-none select-none" opacity="0.45">
               {computedOceanLabels.map((lbl) => {
-                const words = lbl.name.split(' ');
+                const translatedName = getTranslatedOcean(lbl.name, getAppLanguage());
+                const words = translatedName.split(' ');
                 return (
                   <text
                     key={lbl.id}
@@ -1186,13 +1214,13 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                     className="font-sans font-bold text-[6px] sm:text-[7px] tracking-[0.14em] fill-[#456885] uppercase select-none pointer-events-none"
                   >
                     {words.map((word: string, idx: number) => (
-                      <tspan
-                        key={idx}
-                        x={lbl.x}
-                        dy={idx === 0 ? `${-(words.length - 1) * 0.55}em` : '1.1em'}
-                      >
-                        {word}
-                      </tspan>
+                       <tspan
+                         key={idx}
+                         x={lbl.x}
+                         dy={idx === 0 ? `${-(words.length - 1) * 0.55}em` : '1.1em'}
+                       >
+                         {word}
+                       </tspan>
                     ))}
                   </text>
                 );
@@ -1261,7 +1289,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           <div className="flex items-center gap-1 text-[10px] text-slate-300 font-medium">
             <MapPin className="h-3 w-3 text-indigo-400" />
             <span>
-              {hoveredCountry.count} {hoveredCountry.count === 1 ? 'Friend' : 'Friends'}
+              {hoveredCountry.count} {getFriendLabel(hoveredCountry.count)}
             </span>
           </div>
         </div>

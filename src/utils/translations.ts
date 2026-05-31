@@ -39,6 +39,9 @@ export interface TranslationSet {
   confirmResetMessageUser: string;
   confirmResetMessageGuest: string;
   overallStats: string;
+  howItWorks: string;
+  howItWorksDesc: string;
+  showMeAround: string;
 }
 
 export const TRANSLATIONS: Record<AppLanguage, TranslationSet> = {
@@ -78,9 +81,12 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationSet> = {
     cancel: "Cancel",
     resetEverything: "Reset Everything",
     confirmResetTitle: "Reset Map Data",
-    confirmResetMessageUser: "Are you sure you want to reset your travel network? This will clear all custom database entries, clear custom colors, and restore the initial example friends.",
-    confirmResetMessageGuest: "Are you sure you want to reset your travel network? This will restore the initial examples, clear all custom colors, and clear all custom entries!",
-    overallStats: "Overall Statistics"
+    confirmResetMessageUser: "Are you sure you want to reset your travel network? This will permanently delete all your registered friends and custom country colors, leaving a completely blank slate map.",
+    confirmResetMessageGuest: "Are you sure you want to reset your travel network? This will permanently delete all your registered friends and custom country colors, leaving a completely blank slate map.",
+    overallStats: "Overall Statistics",
+    howItWorks: "How It Works",
+    howItWorksDesc: "Learn how to use Gloko to track your friends and connections around the world.",
+    showMeAround: "Show Me Around"
   },
   es: {
     settings: "Ajustes",
@@ -118,9 +124,12 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationSet> = {
     cancel: "Cancelar",
     resetEverything: "Restablecer todo",
     confirmResetTitle: "Restablecer datos del mapa",
-    confirmResetMessageUser: "¿Estás seguro de que deseas restablecer tu red de viajes? Esto borrará todas las entradas personalizadas, los colores personalizados y restaurará los amigos de ejemplo iniciales.",
-    confirmResetMessageGuest: "¿Estás seguro de que deseas restablecer tu red de viajes? Esto restaurará los ejemplos iniciales, borrará todos los colores y las entradas personalizadas.",
-    overallStats: "Estadísticas Generales"
+    confirmResetMessageUser: "¿Estás seguro de que deseas restablecer tu red de viajes? Esto borrará permanentemente todos tus amigos registrados y colores personalizados, dejando un mapa completamente vacío.",
+    confirmResetMessageGuest: "¿Estás seguro de que deseas restablecer tu red de viajes? Esto borrará permanentemente todos tus amigos registrados y colores personalizados, dejando un mapa completamente vacío.",
+    overallStats: "Estadísticas Generales",
+    howItWorks: "¿Cómo funciona?",
+    howItWorksDesc: "Aprende a usar Gloko para seguir a tus amigos y conexiones en todo el mundo.",
+    showMeAround: "Mostrarme el mapa"
   },
   fr: {
     settings: "Paramètres",
@@ -158,9 +167,12 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationSet> = {
     cancel: "Annuler",
     resetEverything: "Réinitialiser tout",
     confirmResetTitle: "Réinitialiser les données",
-    confirmResetMessageUser: "Êtes-vous sûr de vouloir réinitialiser votre réseau ? Cela effacera toutes les entrées personnalisées, les couleurs et restaurera les exemples d'amis.",
-    confirmResetMessageGuest: "Êtes-vous sûr de vouloir réinitialiser votre réseau ? Cela restaurera les exemples initiaux, effacera les couleurs et les entrées personnalisées.",
-    overallStats: "Statistiques Globales"
+    confirmResetMessageUser: "Êtes-vous sûr de vouloir réinitialiser votre réseau ? Cela effacera définitivement tous vos amis enregistrés et vos couleurs personnalisées, laissant une carte complètement vide.",
+    confirmResetMessageGuest: "Êtes-vous sûr de vouloir réinitialiser votre réseau ? Cela effacera définitivement tous vos amis enregistrés et vos couleurs personnalisées, laissant une carte complètement vide.",
+    overallStats: "Statistiques Globales",
+    howItWorks: "Comment ça marche ?",
+    howItWorksDesc: "Apprenez à utiliser Gloko pour suivre vos amis et vos connexions à travers le monde.",
+    showMeAround: "Guide touristique"
   },
   de: {
     settings: "Einstellungen",
@@ -198,9 +210,12 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationSet> = {
     cancel: "Abbrechen",
     resetEverything: "Alles zurücksetzen",
     confirmResetTitle: "Kartendaten zurücksetzen",
-    confirmResetMessageUser: "Sind Sie sicher, dass Sie Ihr Reisenetzwerk zurücksetzen möchten? Dadurch werden alle benutzerdefinierten Einträge und Farben gelöscht und die Beispiel-Freunde wiederhergestellt.",
-    confirmResetMessageGuest: "Sind Sie sicher, dass Sie Ihr Reisenetzwerk zurücksetzen möchten? Dadurch werden die ursprünglichen Beispiele wiederhergestellt und alle benutzerdefinierten Farben und Einträge gelöscht.",
-    overallStats: "Gesamtstatistik"
+    confirmResetMessageUser: "Sind Sie sicher, dass Sie Ihr Reisenetzwerk zurücksetzen möchten? Dadurch werden all Ihre eingetragenen Freunde und benutzerdefinierten Länderfarben dauerhaft gelöscht und eine völlig leere Karte hinterlassen.",
+    confirmResetMessageGuest: "Sind Sie sicher, dass Sie Ihr Reisenetzwerk zurücksetzen möchten? Dadurch werden all Ihre eingetragenen Freunde und benutzerdefinierten Länderfarben dauerhaft gelöscht und eine völlig leere Karte hinterlassen.",
+    overallStats: "Gesamtstatistik",
+    howItWorks: "Wie es funktioniert",
+    howItWorksDesc: "Erfahren Sie, wie Sie mit Gloko Ihre Freunde und Kontakte auf der ganzen Welt verfolgen können.",
+    showMeAround: "Rundgang starten"
   },
   zh: {
     settings: "设置",
@@ -238,8 +253,61 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationSet> = {
     cancel: "取消",
     resetEverything: "重置所有内容",
     confirmResetTitle: "重置地图数据",
-    confirmResetMessageUser: "确认要重置旅行名录吗？这会清除所有自定义数据库记录、自定义配色，并恢复初始示例好友。",
-    confirmResetMessageGuest: "确认要重置旅行名录吗？这会恢复初始示例，清除所有自定义省市配色及好友记录！",
-    overallStats: "整体统计"
+    confirmResetMessageUser: "确认要重置旅行名录吗？这将会永久删除您添加的所有好友记录及自定义国家配色，留下一张完全空白的地图。",
+    confirmResetMessageGuest: "确认要重置旅行名录吗？这将会永久删除您添加的所有好友记录及自定义国家配色，留下一张完全空白的地图。",
+    overallStats: "整体统计",
+    howItWorks: "功能介绍",
+    howItWorksDesc: "了解如何使用 Gloko 记录和追踪您在全球各地的朋友与社交网络关系。",
+    showMeAround: "带我逛逛"
   }
 };
+
+export function getAppLanguage(): AppLanguage {
+  const saved = localStorage.getItem('gloko_app_language');
+  if (saved === 'en' || saved === 'es' || saved === 'fr' || saved === 'de' || saved === 'zh') {
+    return saved as AppLanguage;
+  }
+  return 'en';
+}
+
+export function getTranslation(): TranslationSet {
+  const lang = getAppLanguage();
+  return TRANSLATIONS[lang] || TRANSLATIONS.en;
+}
+
+export function getTranslatedOcean(name: string, lang: AppLanguage): string {
+  const translations: Record<string, Record<Exclude<AppLanguage, 'en'>, string>> = {
+    'Arctic Ocean': {
+      es: 'Océano Ártico',
+      fr: 'Océan Arctique',
+      de: 'Arktischer Ozean',
+      zh: '北冰洋'
+    },
+    'Pacific Ocean': {
+      es: 'Océano Pacífico',
+      fr: 'Océan Pacifique',
+      de: 'Pazifischer Ozean',
+      zh: '太平洋'
+    },
+    'Atlantic Ocean': {
+      es: 'Océano Atlántico',
+      fr: 'Océan Atlantique',
+      de: 'Atlantischer Ozean',
+      zh: '大西洋'
+    },
+    'Indian Ocean': {
+      es: 'Océano Índico',
+      fr: 'Océan Indien',
+      de: 'Indischer Ozean',
+      zh: '印度洋'
+    },
+    'Southern Ocean': {
+      es: 'Océano Antártico',
+      fr: 'Océan Austral',
+      de: 'Südlicher Ozean',
+      zh: '南冰洋'
+    }
+  };
+  if (lang === 'en') return name;
+  return translations[name]?.[lang as Exclude<AppLanguage, 'en'>] || name;
+}

@@ -4,11 +4,14 @@ import WorldMap from './components/WorldMap';
 import CountryDetails from './components/CountryDetails';
 import Loader from './components/Loader';
 import SettingsDrawer from './components/SettingsDrawer';
+import GuideTourModal from './components/GuideTourModal';
+import confetti from 'canvas-confetti';
 import { Globe, RefreshCw, Trash2, Heart, Download, Settings } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db, googleProvider, signInWithPopup, signOut, OperationType, handleFirestoreError } from './firebase';
 import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { AppLanguage, TRANSLATIONS } from './utils/translations';
+import { getCountryInfo } from './data/countries';
 
 const LOCAL_STORAGE_KEY = 'travel_contacts_map_journal';
 
@@ -61,6 +64,8 @@ export default function App() {
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
+  const [showGuideTour, setShowGuideTour] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [language, setLanguage] = useState<AppLanguage>(() => {
     const saved = localStorage.getItem('gloko_app_language');
     if (saved === 'en' || saved === 'es' || saved === 'fr' || saved === 'de' || saved === 'zh') {
@@ -78,18 +83,26 @@ export default function App() {
   } | null>(null);
 
   const handleLanguageChange = (lang: AppLanguage) => {
-    setLanguage(lang);
+    setShowSettingsDrawer(false);
+    setHasLoaded(false);
     localStorage.setItem('gloko_app_language', lang);
+    setLanguage(lang);
+    setTimeout(() => {
+      setHasLoaded(true);
+    }, 1300);
   };
 
   // Track Firebase Authentication State
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser && !user) {
+        setShowGuideTour(true);
+      }
       setUser(currentUser);
       setIsAuthLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   // Listen to keyboard dismissal & text input blur on mobile to reset viewport scale to 1.0 (reverses auto-zoom)
   useEffect(() => {
@@ -130,8 +143,13 @@ export default function App() {
         if (stored) {
           setContacts(JSON.parse(stored));
         } else {
-          setContacts(DEFAULT_DEMO_CONTACTS);
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(DEFAULT_DEMO_CONTACTS));
+          if (localStorage.getItem('gloko_no_demo') === 'true') {
+            setContacts([]);
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
+          } else {
+            setContacts(DEFAULT_DEMO_CONTACTS);
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(DEFAULT_DEMO_CONTACTS));
+          }
         }
 
         const storedColors = localStorage.getItem('travel_contacts_map_country_colors');
@@ -162,6 +180,11 @@ export default function App() {
 
       // Boostrap zero-state user profiles automatically with demo items
       if (fetchedContacts.length === 0) {
+        if (localStorage.getItem('gloko_no_demo') === 'true' || localStorage.getItem(`gloko_no_demo_${user.uid}`) === 'true') {
+          setContacts([]);
+          setHasLoaded(true);
+          return;
+        }
         try {
           for (const demoContact of DEFAULT_DEMO_CONTACTS) {
             const cloudContact = { 
@@ -209,6 +232,7 @@ export default function App() {
   const handleLogin = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
+      setShowGuideTour(true);
     } catch (error) {
       console.error('Sign-in operation failed:', error);
     }
@@ -435,7 +459,10 @@ export default function App() {
       confirmLabel: t.resetEverything,
       isDestructive: true,
       onConfirm: async () => {
+        // Set no demo flags to completely clear example inputs
+        localStorage.setItem('gloko_no_demo', 'true');
         if (user) {
+          localStorage.setItem(`gloko_no_demo_${user.uid}`, 'true');
           try {
             // 1. Fetch current contacts
             const q = query(collection(db, 'contacts'), where('userId', '==', user.uid));
@@ -451,15 +478,26 @@ export default function App() {
             }
             // 3. Clear selected country selection
             setSelectedCountryId(null);
+            setContacts([]);
+            setCountryColors({});
           } catch (e) {
             handleFirestoreError(e, OperationType.DELETE, 'contacts-reset');
           }
         } else {
-          saveAndSyncContacts(DEFAULT_DEMO_CONTACTS);
+          saveAndSyncContacts([]);
           setCountryColors({});
           localStorage.removeItem('travel_contacts_map_country_colors');
           setSelectedCountryId(null);
         }
+
+        // Add 1.4 seconds artificial delay so the user can easily see and register the beautiful loading button state
+        await new Promise((resolve) => setTimeout(resolve, 1400));
+
+        // Close settings drawer
+        setShowSettingsDrawer(false);
+
+        // Confetti effect is explicitly omitted here because the user dislikes it for reset.
+
         setConfirmConfig(null);
       }
     });
@@ -521,6 +559,14 @@ export default function App() {
         onResetJournal={handleResetJournal}
         language={language}
         onLanguageChange={handleLanguageChange}
+        onShowGuide={() => setShowGuideTour(true)}
+      />
+
+      {/* Interactive Guide Tour Slides Deck Walkthrough Modal */}
+      <GuideTourModal
+        isOpen={showGuideTour}
+        onClose={() => setShowGuideTour(false)}
+        language={language}
       />
 
       {/* Center Dialog Popup for Selected Country */}
@@ -536,7 +582,7 @@ export default function App() {
           <div className="relative bg-white rounded-xl sm:rounded-2xl shadow-xl border border-slate-100 w-full max-w-xl h-[88vh] sm:h-auto max-h-[92vh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 z-50">
             <CountryDetails
               countryId={selectedCountryId}
-              countryName={selectedCountryName}
+              countryName={getCountryInfo(selectedCountryId)?.name || selectedCountryName}
               contacts={contacts}
               onAddContact={handleAddContact}
               onUpdateContact={handleUpdateContact}
@@ -555,7 +601,11 @@ export default function App() {
           {/* Dark Backdrop */}
           <div
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
-            onClick={() => setConfirmConfig(null)}
+            onClick={() => {
+              if (!isResetting) {
+                setConfirmConfig(null);
+              }
+            }}
           />
 
           {/* Centered Confirmation Box */}
@@ -573,20 +623,44 @@ export default function App() {
             </p>
             <div className="flex items-center justify-end gap-2.5 mt-2">
               <button
+                disabled={isResetting}
                 onClick={() => setConfirmConfig(null)}
-                className="px-4 py-2 hover:bg-slate-50 text-slate-500 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+                className={`px-4 py-2 text-slate-500 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+                  isResetting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-50'
+                }`}
               >
                 {TRANSLATIONS[language]?.cancel || 'Cancel'}
               </button>
               <button
-                onClick={confirmConfig.onConfirm}
-                className={`px-4 py-2 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm hover:shadow-md ${
-                  confirmConfig.isDestructive
+                disabled={isResetting}
+                onClick={async () => {
+                  setIsResetting(true);
+                  try {
+                    await confirmConfig.onConfirm();
+                  } catch (e) {
+                    console.error("Confirm operation failed:", e);
+                  } finally {
+                    setIsResetting(false);
+                  }
+                }}
+                className={`px-4 py-2 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm hover:shadow-md flex items-center justify-center gap-1.5 min-w-[100px] ${
+                  isResetting
+                    ? 'bg-amber-600 animate-pulse cursor-not-allowed'
+                    : confirmConfig.isDestructive
                     ? 'bg-red-600 hover:bg-red-700 active:bg-red-800'
                     : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800'
                 }`}
               >
-                {confirmConfig.confirmLabel}
+                {isResetting ? (
+                   <>
+                     <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+                     <span>
+                       {language === 'es' ? 'Restableciendo...' : language === 'fr' ? 'Réinitialisation...' : language === 'de' ? 'Zurücksetzen...' : language === 'zh' ? '正在重置...' : 'Resetting...'}
+                     </span>
+                   </>
+                ) : (
+                  confirmConfig.confirmLabel
+                )}
               </button>
             </div>
           </div>
