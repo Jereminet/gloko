@@ -136,7 +136,7 @@ export default function ContactForm({
         <div>
           <h3 className="font-sans font-semibold text-slate-800 text-sm flex items-center gap-1.5">
             <span>{editingContact ? 
-              (getAppLanguage() === 'es' ? '✍️ Editar detalle de amigo' : getAppLanguage() === 'fr' ? '✍️ Modifier les détails de l\'ami' : getAppLanguage() === 'de' ? '✍️ Freunddetails bearbeiten' : getAppLanguage() === 'zh' ? '✍️ 编辑好友详情' : '✍️ Edit Friend Detail')
+              (getAppLanguage() === 'es' ? '✍️ Editar detalles de amigo' : getAppLanguage() === 'fr' ? '✍️ Modifier les détails de l\'ami' : getAppLanguage() === 'de' ? '✍️ Freunddetails bearbeiten' : getAppLanguage() === 'zh' ? '✍️ 编辑好友详情' : '✍️ Edit Friend Details')
               : (getAppLanguage() === 'es' ? '➕ Agregar amigo de viaje' : getAppLanguage() === 'fr' ? '➕ Ajouter un ami' : getAppLanguage() === 'de' ? '➕ Reisefreund hinzufügen' : getAppLanguage() === 'zh' ? '➕ 添加自驾/旅行好友' : '➕ Add Travel Friend')}</span>
           </h3>
           <div className="flex items-center gap-1.5 mt-0.5">

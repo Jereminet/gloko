@@ -4,7 +4,7 @@ import { Contact } from '../types';
 import { getCountryInfo } from '../data/countries';
 import ContactCard from './ContactCard';
 import ContactForm from './ContactForm';
-import { UserPlus, X, Globe, MapPin, Palette, Search } from 'lucide-react';
+import { UserPlus, X, Globe, MapPin, Palette, Search, SlidersHorizontal } from 'lucide-react';
 import { getTranslation, getAppLanguage } from '../utils/translations';
 
 interface CountryDetailsProps {
@@ -91,7 +91,8 @@ export default function CountryDetails({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [shakeFriendId, setShakeFriendId] = useState<string | null>(null);
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'date' | 'alphabetical'>('date');
+  const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'date-asc' | 'date-desc'>('date-desc');
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
 
   const countryInfo = getCountryInfo(countryId);
 
@@ -108,12 +109,18 @@ export default function CountryDetails({
   });
 
   const displayedContacts = [...filteredContacts].sort((a, b) => {
-    if (sortBy === 'alphabetical') {
+    if (sortBy === 'name-asc') {
       return a.name.localeCompare(b.name, getAppLanguage());
+    } else if (sortBy === 'name-desc') {
+      return b.name.localeCompare(a.name, getAppLanguage());
+    } else if (sortBy === 'date-asc') {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateA - dateB;
     } else {
       const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return dateB - dateA; // Newest first
+      return dateB - dateA;
     }
   });
 
@@ -308,65 +315,145 @@ export default function CountryDetails({
                   )}
                 </div>
 
-                {/* Sort controls */}
-                <div className="flex items-center justify-between text-[10px] mt-0.5 bg-slate-50 p-1 rounded-lg border border-slate-200/50 font-sans">
-                  <span className="text-slate-500 font-medium pl-1.5">
-                    {(() => {
-                      const lang = getAppLanguage();
-                      if (lang === 'es') return "Ordenar:";
-                      if (lang === 'fr') return "Trier:";
-                      if (lang === 'de') return "Sortieren:";
-                      if (lang === 'zh') return "排序:";
-                      return "Sort:";
-                    })()}
-                  </span>
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => setSortBy('date')}
-                      className={`px-2 py-0.5 rounded-md font-semibold transition-all cursor-pointer ${
-                        sortBy === 'date'
-                          ? 'bg-white shadow-xs text-indigo-600 border border-slate-200/60 font-bold'
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      {(() => {
-                        const lang = getAppLanguage();
-                        if (lang === 'es') return "Fecha";
-                        if (lang === 'fr') return "Date";
-                        if (lang === 'de') return "Datum";
-                        if (lang === 'zh') return "按日期";
-                        return "By Date";
-                      })()}
-                    </button>
-                    <button
-                      onClick={() => setSortBy('alphabetical')}
-                      className={`px-2 py-0.5 rounded-md font-semibold transition-all cursor-pointer ${
-                        sortBy === 'alphabetical'
-                          ? 'bg-white shadow-xs text-indigo-600 border border-slate-200/60 font-bold'
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      {(() => {
-                        const lang = getAppLanguage();
-                        if (lang === 'es') return "Nombre (A-Z)";
-                        if (lang === 'fr') return "Nom (A-Z)";
-                        if (lang === 'de') return "A-Z";
-                        if (lang === 'zh') return "按姓名 (A-Z)";
-                        return "Name (A-Z)";
-                      })()}
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
 
             {countryContacts.length > 0 ? (
               <div className="flex flex-col gap-3">
-                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans mb-1 flex items-center justify-between">
-                  <span>{getFriendsListedLabel(displayedContacts.length)}</span>
-                  {friendSearchQuery.trim() && (
-                    <span className="text-indigo-650 bg-indigo-50/80 px-1 rounded font-semibold text-[8px] normal-case">{getFilteredLabel()}</span>
-                  )}
+                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans mb-1 flex items-center justify-between relative">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span>{getFriendsListedLabel(displayedContacts.length)}</span>
+                    {friendSearchQuery.trim() && (
+                      <span className="text-indigo-650 bg-indigo-50/80 px-1 rounded font-semibold text-[8px] tracking-normal normal-case shrink-0">{getFilteredLabel()}</span>
+                    )}
+                  </div>
+                  
+                  {/* Filter logo button & dropdown menu */}
+                  <div className="relative shrink-0 select-none">
+                    <button
+                      onClick={() => setIsSortMenuOpen(!isSortMenuOpen)}
+                      className={`p-1 hover:bg-slate-100 rounded-md transition-all flex items-center gap-1 cursor-pointer normal-case font-semibold text-[10px] ${
+                        isSortMenuOpen ? 'text-indigo-650 bg-slate-100/80' : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                      title={(() => {
+                        const lang = getAppLanguage();
+                        if (lang === 'es') return "Ordenar amigos";
+                        if (lang === 'fr') return "Trier les amis";
+                        if (lang === 'de') return "Freunde sortieren";
+                        if (lang === 'zh') return "排序好友";
+                        return "Sort friends";
+                      })()}
+                    >
+                      <span className="font-sans text-[10px] text-slate-500 font-semibold tracking-normal hidden xs:inline mr-0.5">
+                        {(() => {
+                          const lang = getAppLanguage();
+                          if (sortBy === 'name-asc') return lang === 'es' ? 'A-Z ⬆️' : lang === 'fr' ? 'A-Z ⬆️' : lang === 'de' ? 'A-Z ⬆️' : lang === 'zh' ? '名字 A-Z' : 'A-Z ⬆️';
+                          if (sortBy === 'name-desc') return lang === 'es' ? 'Z-A ⬇️' : lang === 'fr' ? 'Z-A ⬇️' : lang === 'de' ? 'Z-A ⬇️' : lang === 'zh' ? '名字 Z-A' : 'Z-A ⬇️';
+                          if (sortBy === 'date-asc') return lang === 'es' ? 'Antiguos' : lang === 'fr' ? 'Anciens' : lang === 'de' ? 'Älteste' : lang === 'zh' ? '最旧' : 'Oldest';
+                          return lang === 'es' ? 'Recientes' : lang === 'fr' ? 'Récents' : lang === 'de' ? 'Neueste' : lang === 'zh' ? '最新' : 'Newest';
+                        })()}
+                      </span>
+                      <SlidersHorizontal className="h-3.5 w-3.5 stroke-[2.2]" />
+                    </button>
+                    
+                    {isSortMenuOpen && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-40" 
+                          onClick={() => setIsSortMenuOpen(false)}
+                        />
+                        <div className="absolute right-0 mt-1.5 w-44 bg-white border border-slate-200/80 shadow-lg rounded-xl py-1 z-50 text-[10.5px] font-sans font-medium tracking-normal text-slate-700 normal-case">
+                          <button
+                            onClick={() => {
+                              setSortBy('name-asc');
+                              setIsSortMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer ${
+                              sortBy === 'name-asc' ? 'text-indigo-650 bg-indigo-50/40 font-bold' : ''
+                            }`}
+                          >
+                            <span>
+                              {(() => {
+                                const l = getAppLanguage();
+                                if (l === 'es') return 'Alfabético (A-Z) ⬆️';
+                                if (l === 'fr') return 'Alphabétique (A-Z) ⬆️';
+                                if (l === 'de') return 'Alphabetisch (A-Z) ⬆️';
+                                if (l === 'zh') return '姓名 (A-Z) ⬆️';
+                                return 'Alphabetical (A-Z) ⬆️';
+                              })()}
+                            </span>
+                            {sortBy === 'name-asc' && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setSortBy('name-desc');
+                              setIsSortMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer ${
+                              sortBy === 'name-desc' ? 'text-indigo-650 bg-indigo-50/40 font-bold' : ''
+                            }`}
+                          >
+                            <span>
+                              {(() => {
+                                const l = getAppLanguage();
+                                if (l === 'es') return 'Alfabético (Z-A) ⬇️';
+                                if (l === 'fr') return 'Alphabétique (Z-A) ⬇️';
+                                if (l === 'de') return 'Alphabetisch (Z-A) ⬇️';
+                                if (l === 'zh') return '姓名 (Z-A) ⬇️';
+                                return 'Alphabetical (Z-A) ⬇️';
+                              })()}
+                            </span>
+                            {sortBy === 'name-desc' && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setSortBy('date-desc');
+                              setIsSortMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer ${
+                              sortBy === 'date-desc' ? 'text-indigo-650 bg-indigo-50/40 font-bold' : ''
+                            }`}
+                          >
+                            <span>
+                              {(() => {
+                                const l = getAppLanguage();
+                                if (l === 'es') return 'Recientes primero ⬇️';
+                                if (l === 'fr') return 'Récents d\'abord ⬇️';
+                                if (l === 'de') return 'Neueste zuerst ⬇️';
+                                if (l === 'zh') return '最新添加优先 ⬇️';
+                                return 'Newest first ⬇️';
+                              })()}
+                            </span>
+                            {sortBy === 'date-desc' && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setSortBy('date-asc');
+                              setIsSortMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer ${
+                              sortBy === 'date-asc' ? 'text-indigo-650 bg-indigo-50/40 font-bold' : ''
+                            }`}
+                          >
+                            <span>
+                              {(() => {
+                                const l = getAppLanguage();
+                                if (l === 'es') return 'Antiguos primero ⬆️';
+                                if (l === 'fr') return 'Anciens d\'abord ⬆️';
+                                if (l === 'de') return 'Älteste zuerst ⬆️';
+                                if (l === 'zh') return '最旧添加优先 ⬆️';
+                                return 'Oldest first ⬆️';
+                              })()}
+                            </span>
+                            {sortBy === 'date-asc' && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
                 
                 {displayedContacts.length > 0 ? (
