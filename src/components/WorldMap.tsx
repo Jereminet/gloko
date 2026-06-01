@@ -522,6 +522,13 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     }
     
     const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+    
+    // Clear dynamic country highlighted label if zoomed on mobile
+    if (isMobile && mobileHoveredId) {
+      setMobileHoveredId(null);
+      setHoveredCountry(null);
+    }
+
     const minZoom = isMobile ? 0.5 : 0.7;
     const nextZoom = Math.max(minZoom, Math.min(zoom * factor, 12));
     const nextPos = {
@@ -574,8 +581,8 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (selectedCountryId) return; // Lock map interaction when country modal is open completely
     if (e.touches.length === 2) {
-      if (selectedCountryId) return; // Lock map interaction when country modal is open
       // Two fingers: pinch zoom
       setIsDragging(false); // Disable dragging
       const t1 = e.touches[0];
@@ -604,8 +611,8 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (selectedCountryId) return; // Lock map interaction when country modal is open completely
     if (e.touches.length === 2 && touchStartDist.current !== null) {
-      if (selectedCountryId) return; // Lock map interaction when country modal is open
       const t1 = e.touches[0];
       const t2 = e.touches[1];
       const dx = t1.clientX - t2.clientX;
@@ -619,6 +626,12 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
       const minZoom = isMobile ? 0.35 : 0.7;
       const nextZoom = Math.max(minZoom, Math.min(touchStartZoom.current * scale, 12));
       
+      // Clear dynamic country highlighted label if zoomed on mobile via pinch
+      if (isMobile && mobileHoveredId) {
+        setMobileHoveredId(null);
+        setHoveredCountry(null);
+      }
+
       const mid = touchStartMidpoint.current;
       const initZoom = touchStartZoom.current;
       

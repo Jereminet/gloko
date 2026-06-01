@@ -136,7 +136,7 @@ export default function ContactForm({
         <div>
           <h3 className="font-sans font-semibold text-slate-800 text-sm flex items-center gap-1.5">
             <span>{editingContact ? 
-              (getAppLanguage() === 'es' ? '✍️ Editar diario de viaje' : getAppLanguage() === 'fr' ? '✍️ Modifier le journal' : getAppLanguage() === 'de' ? '✍️ Tagebuch bearbeiten' : getAppLanguage() === 'zh' ? '✍️ 编辑旅行日记' : '✍️ Edit Travel Diary')
+              (getAppLanguage() === 'es' ? '✍️ Editar detalle de amigo' : getAppLanguage() === 'fr' ? '✍️ Modifier les détails de l\'ami' : getAppLanguage() === 'de' ? '✍️ Freunddetails bearbeiten' : getAppLanguage() === 'zh' ? '✍️ 编辑好友详情' : '✍️ Edit Friend Detail')
               : (getAppLanguage() === 'es' ? '➕ Agregar amigo de viaje' : getAppLanguage() === 'fr' ? '➕ Ajouter un ami' : getAppLanguage() === 'de' ? '➕ Reisefreund hinzufügen' : getAppLanguage() === 'zh' ? '➕ 添加自驾/旅行好友' : '➕ Add Travel Friend')}</span>
           </h3>
           <div className="flex items-center gap-1.5 mt-0.5">
@@ -153,7 +153,7 @@ export default function ContactForm({
       </div>
 
       {/* Form Fields container */}
-      <form onSubmit={handleSubmit} className="p-4 flex flex-col gap-4 overflow-y-auto flex-1">
+      <form onSubmit={handleSubmit} className="p-4 flex flex-col gap-4 overflow-y-auto overscroll-contain flex-1">
         {error && (
           <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-medium flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 flex-shrink-0 text-red-500" />

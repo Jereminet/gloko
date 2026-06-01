@@ -91,6 +91,7 @@ export default function CountryDetails({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [shakeFriendId, setShakeFriendId] = useState<string | null>(null);
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'date' | 'alphabetical'>('date');
 
   const countryInfo = getCountryInfo(countryId);
 
@@ -99,11 +100,21 @@ export default function CountryDetails({
     (c) => c.countryId === countryId || c.countryId.padStart(3, '0') === countryId.padStart(3, '0')
   );
 
-  // Filter displayed contacts based on user's query search inside country details - strictly limited to the name of the friend
-  const displayedContacts = countryContacts.filter((c) => {
+  // Filter and sort contacts based on user preferences in country details
+  const filteredContacts = countryContacts.filter((c) => {
     if (!friendSearchQuery.trim()) return true;
     const q = friendSearchQuery.toLowerCase();
     return c.name.toLowerCase().includes(q);
+  });
+
+  const displayedContacts = [...filteredContacts].sort((a, b) => {
+    if (sortBy === 'alphabetical') {
+      return a.name.localeCompare(b.name, getAppLanguage());
+    } else {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA; // Newest first
+    }
   });
 
   const getNiceDefaultColorForCountry = (id: string) => {
@@ -169,84 +180,25 @@ export default function CountryDetails({
       {/* Detail View Header */}
       {!isFormOpen ? (
         <>
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/40">
+          <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/40 relative">
             <div className="flex items-center gap-2.5">
               <div>
-                <div className="flex items-center gap-2 font-sans relative">
+                <div className="flex items-center gap-2 font-sans">
                   <span className="text-xl leading-none select-none">{countryInfo?.flag || '🗺️'}</span>
                   <h3 className="font-bold text-slate-800 text-sm tracking-tight">{countryName}</h3>
                   
                   {/* Small Customizable Color Button Next to name - Only available if friends exist in country */}
                   {countryContacts.length > 0 && (
-                    <div className="relative flex items-center">
-                      <button
-                        onClick={() => setShowColorPicker(!showColorPicker)}
-                        className="p-1 hover:bg-slate-200/60 text-slate-500 rounded-md transition-all flex items-center justify-center cursor-pointer"
-                        title="Choose map display color"
-                      >
-                        <Palette 
-                          className="h-4 w-4" 
-                          style={{ color: currentColor || getNiceDefaultColorForCountry(countryId) }} 
-                        />
-                      </button>
-                      
-                      {/* Micro absolute floating preset picker */}
-                      {showColorPicker && (
-                        <div className="absolute top-full left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 mt-1.5 bg-white border border-slate-200 shadow-lg rounded-xl p-2.5 z-50 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1 w-max">
-                          {[
-                            '#6366f1', // Indigo
-                            '#3b82f6', // Sapphire Blue
-                            '#10b981', // Emerald
-                            '#f59e0b', // Amber Gold
-                            '#ef4444', // Crimson Red
-                            '#ec4899', // Rose Orchid
-                            '#8b5cf6', // Lavender Purple
-                            '#14b8a6', // Cool Mint
-                          ].map((presetColor) => (
-                            <button
-                              key={presetColor}
-                              onClick={() => {
-                                onColorChange && onColorChange(presetColor);
-                                setShowColorPicker(false);
-                              }}
-                              style={{ backgroundColor: presetColor }}
-                              className={`w-4.5 h-4.5 rounded-full transition-transform hover:scale-115 cursor-pointer shadow-xs border border-white ${
-                                currentColor === presetColor ? 'ring-2 ring-indigo-505/80 scale-110' : ''
-                              }`}
-                            />
-                          ))}
-                          
-                          {/* Native custom color bubble tool */}
-                          <label 
-                            className="w-4.5 h-4.5 rounded-full border border-slate-200 shadow-xs relative cursor-pointer hover:scale-115 transition-transform flex items-center justify-center overflow-hidden"
-                            style={{
-                              background: 'linear-gradient(45deg, #f06a6a, #f0c36a, #6af07a, #6ad0f0, #966af0, #f06adc)'
-                            }}
-                            title="Custom color..."
-                          >
-                            <input
-                              type="color"
-                              value={currentColor || '#6366f1'}
-                              onChange={(e) => onColorChange && onColorChange(e.target.value)}
-                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                            />
-                            <span className="text-[9px] text-white font-bold leading-none select-none">+</span>
-                          </label>
-
-                          {currentColor && (
-                            <button
-                              onClick={() => {
-                                onColorChange && onColorChange('');
-                                setShowColorPicker(false);
-                              }}
-                              className="px-2 py-0.5 border border-slate-205 bg-slate-50 hover:bg-slate-100 rounded text-[9px] font-sans font-semibold text-slate-500 transition-colors cursor-pointer"
-                            >
-                              {getAppLanguage() === 'es' ? 'Restablecer' : getAppLanguage() === 'fr' ? 'Réinitialiser' : getAppLanguage() === 'de' ? 'Zurücksetzen' : getAppLanguage() === 'zh' ? '重置' : 'Reset'}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      onClick={() => setShowColorPicker(!showColorPicker)}
+                      className="p-1 hover:bg-slate-200/60 text-slate-500 rounded-md transition-all flex items-center justify-center cursor-pointer"
+                      title="Choose map display color"
+                    >
+                      <Palette 
+                        className="h-4 w-4" 
+                        style={{ color: currentColor || getNiceDefaultColorForCountry(countryId) }} 
+                      />
+                    </button>
                   )}
                 </div>
                 <span className="text-[10px] text-slate-400 font-sans font-medium pl-6">
@@ -263,10 +215,67 @@ export default function CountryDetails({
             >
               <X className="h-5 w-5" />
             </button>
+
+            {/* Micro absolute floating preset picker, perfectly centered in the header */}
+            {showColorPicker && (
+              <div className="absolute top-[85%] left-1/2 -translate-x-1/2 bg-white border border-slate-200 shadow-lg rounded-xl p-2.5 z-50 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1 w-max max-w-[90vw] overflow-x-auto">
+                {[
+                  '#6366f1', // Indigo
+                  '#3b82f6', // Sapphire Blue
+                  '#10b981', // Emerald
+                  '#f59e0b', // Amber Gold
+                  '#ef4444', // Crimson Red
+                  '#ec4899', // Rose Orchid
+                  '#8b5cf6', // Lavender Purple
+                  '#14b8a6', // Cool Mint
+                ].map((presetColor) => (
+                  <button
+                    key={presetColor}
+                    onClick={() => {
+                      onColorChange && onColorChange(presetColor);
+                      setShowColorPicker(false);
+                    }}
+                    style={{ backgroundColor: presetColor }}
+                    className={`w-4.5 h-4.5 rounded-full transition-transform hover:scale-115 cursor-pointer shadow-xs border border-white shrink-0 ${
+                      currentColor === presetColor ? 'ring-2 ring-indigo-500 bg-opacity-100 scale-110' : ''
+                    }`}
+                  />
+                ))}
+                
+                {/* Native custom color bubble tool */}
+                <label 
+                  className="w-4.5 h-4.5 rounded-full border border-slate-200 shadow-xs relative cursor-pointer hover:scale-115 transition-transform flex items-center justify-center overflow-hidden shrink-0"
+                  style={{
+                    background: 'linear-gradient(45deg, #f06a6a, #f0c36a, #6af07a, #6ad0f0, #966af0, #f06adc)'
+                  }}
+                  title="Custom color..."
+                >
+                  <input
+                    type="color"
+                    value={currentColor || '#6366f1'}
+                    onChange={(e) => onColorChange && onColorChange(e.target.value)}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  <span className="text-[9px] text-white font-bold leading-none select-none">+</span>
+                </label>
+
+                {currentColor && (
+                  <button
+                    onClick={() => {
+                      onColorChange && onColorChange('');
+                      setShowColorPicker(false);
+                    }}
+                    className="px-2 py-0.5 border border-slate-25 bg-slate-50 hover:bg-slate-100 rounded text-[9px] font-sans font-semibold text-slate-500 transition-colors cursor-pointer shrink-0"
+                  >
+                    {getAppLanguage() === 'es' ? 'Restablecer' : getAppLanguage() === 'fr' ? 'Réinitialiser' : getAppLanguage() === 'de' ? 'Zurücksetzen' : getAppLanguage() === 'zh' ? '重置' : 'Reset'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* List and Cards Body */}
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+          <div className="flex-1 overflow-y-auto overscroll-contain p-4 flex flex-col gap-4">
             {/* Big Prominent Central "Add Friend" Button & Local Friend Search Bar */}
             {countryContacts.length > 0 && (
               <div className="flex flex-col gap-2.5 pb-3 border-b border-slate-100/60">
@@ -297,6 +306,56 @@ export default function CountryDetails({
                       <X className="h-3.5 w-3.5" />
                     </button>
                   )}
+                </div>
+
+                {/* Sort controls */}
+                <div className="flex items-center justify-between text-[10px] mt-0.5 bg-slate-50 p-1 rounded-lg border border-slate-200/50 font-sans">
+                  <span className="text-slate-500 font-medium pl-1.5">
+                    {(() => {
+                      const lang = getAppLanguage();
+                      if (lang === 'es') return "Ordenar:";
+                      if (lang === 'fr') return "Trier:";
+                      if (lang === 'de') return "Sortieren:";
+                      if (lang === 'zh') return "排序:";
+                      return "Sort:";
+                    })()}
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setSortBy('date')}
+                      className={`px-2 py-0.5 rounded-md font-semibold transition-all cursor-pointer ${
+                        sortBy === 'date'
+                          ? 'bg-white shadow-xs text-indigo-600 border border-slate-200/60 font-bold'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {(() => {
+                        const lang = getAppLanguage();
+                        if (lang === 'es') return "Fecha";
+                        if (lang === 'fr') return "Date";
+                        if (lang === 'de') return "Datum";
+                        if (lang === 'zh') return "按日期";
+                        return "By Date";
+                      })()}
+                    </button>
+                    <button
+                      onClick={() => setSortBy('alphabetical')}
+                      className={`px-2 py-0.5 rounded-md font-semibold transition-all cursor-pointer ${
+                        sortBy === 'alphabetical'
+                          ? 'bg-white shadow-xs text-indigo-600 border border-slate-200/60 font-bold'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {(() => {
+                        const lang = getAppLanguage();
+                        if (lang === 'es') return "Nombre (A-Z)";
+                        if (lang === 'fr') return "Nom (A-Z)";
+                        if (lang === 'de') return "A-Z";
+                        if (lang === 'zh') return "按姓名 (A-Z)";
+                        return "Name (A-Z)";
+                      })()}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

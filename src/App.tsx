@@ -3,6 +3,7 @@ import { Contact } from './types';
 import WorldMap from './components/WorldMap';
 import CountryDetails from './components/CountryDetails';
 import Loader from './components/Loader';
+import LoginView from './components/LoginView';
 import SettingsDrawer from './components/SettingsDrawer';
 import GuideTourModal from './components/GuideTourModal';
 import confetti from 'canvas-confetti';
@@ -65,6 +66,7 @@ export default function App() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
   const [showGuideTour, setShowGuideTour] = useState(false);
+  const [triggerGuideAfterLoad, setTriggerGuideAfterLoad] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [language, setLanguage] = useState<AppLanguage>(() => {
     const saved = localStorage.getItem('gloko_app_language');
@@ -84,25 +86,32 @@ export default function App() {
 
   const handleLanguageChange = (lang: AppLanguage) => {
     setShowSettingsDrawer(false);
-    setHasLoaded(false);
     localStorage.setItem('gloko_app_language', lang);
     setLanguage(lang);
-    setTimeout(() => {
-      setHasLoaded(true);
-    }, 1300);
+    if (user) {
+      setHasLoaded(false);
+      setTimeout(() => {
+        setHasLoaded(true);
+      }, 1300);
+    }
   };
 
   // Track Firebase Authentication State
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser && !user) {
-        setShowGuideTour(true);
-      }
       setUser(currentUser);
       setIsAuthLoading(false);
     });
     return () => unsubscribe();
   }, [user]);
+
+  // Handle tour popup when transition from the loading screen completes
+  useEffect(() => {
+    if (hasLoaded && isMapLoaded && triggerGuideAfterLoad) {
+      setShowGuideTour(true);
+      setTriggerGuideAfterLoad(false);
+    }
+  }, [hasLoaded, isMapLoaded, triggerGuideAfterLoad]);
 
   // Listen to keyboard dismissal & text input blur on mobile to reset viewport scale to 1.0 (reverses auto-zoom)
   useEffect(() => {
@@ -131,6 +140,31 @@ export default function App() {
       document.removeEventListener('focusout', handleFocusOut);
     };
   }, []);
+
+  // Prevent background body scrolling when modal/drawer overlays are open on mobile
+  useEffect(() => {
+    const shouldLock = !!selectedCountryId || showSettingsDrawer || showGuideTour;
+    if (shouldLock) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.height = '100%';
+      document.body.style.position = 'relative';
+      document.documentElement.style.overflow = 'hidden';
+      document.documentElement.style.height = '100%';
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.height = '';
+      document.body.style.position = '';
+      document.documentElement.style.overflow = '';
+      document.documentElement.style.height = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.height = '';
+      document.body.style.position = '';
+      document.documentElement.style.overflow = '';
+      document.documentElement.style.height = '';
+    };
+  }, [selectedCountryId, showSettingsDrawer, showGuideTour]);
 
   // Sync state from LocalStorage (Guest Mode) or Cloud Firestore (Cloud Sync Mode)
   useEffect(() => {
@@ -231,8 +265,8 @@ export default function App() {
   // Auth Action handlers
   const handleLogin = async () => {
     try {
+      setTriggerGuideAfterLoad(true);
       await signInWithPopup(auth, googleProvider);
-      setShowGuideTour(true);
     } catch (error) {
       console.error('Sign-in operation failed:', error);
     }
@@ -506,11 +540,26 @@ export default function App() {
   // Set of unique countries visited for metrics display
   const visitedCount = new Set(contacts.map((c) => c.countryId.padStart(3, '0'))).size;
 
+  if (isAuthLoading) {
+    return <Loader />;
+  }
+
+  if (!user) {
+    return (
+      <LoginView
+        onLogin={handleLogin}
+        language={language}
+        onLanguageChange={handleLanguageChange}
+        isAuthLoading={isAuthLoading}
+      />
+    );
+  }
+
   return (
     <div className="h-screen w-screen bg-[#d4e5f7] relative overflow-hidden antialiased text-slate-800 font-sans">
       
       {/* Immersive Map Background Layer */}
-      <div className="absolute inset-0 w-full h-full z-0">
+      <div className={`absolute inset-0 w-full h-full z-0 ${selectedCountryId ? 'pointer-events-none' : ''}`}>
         <WorldMap
           ref={mapRef}
           contacts={contacts}

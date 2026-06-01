@@ -16,7 +16,7 @@
         "notes": { "type": "string" },
         "createdAt": { "type": "string" }
       },
-      "required": ["id", "userId", "name", "countryId", "countryName", "city", "contactInfo", "notes", "createdAt"]
+      "required": ["id", "userId", "name", "countryId", "countryName", "createdAt"]
     },
     "CountryColor": {
       "title": "CountryColor",
