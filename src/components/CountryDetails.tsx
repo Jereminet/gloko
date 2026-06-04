@@ -33,57 +33,27 @@ export default function CountryDetails({
   const t = getTranslation();
 
   const getAddFriendLabel = () => {
-    const lang = getAppLanguage();
-    if (lang === 'es') return `Agregar Amigo en ${countryName}`;
-    if (lang === 'fr') return `Ajouter un ami en ${countryName}`;
-    if (lang === 'de') return `Freund in ${countryName} hinzufügen`;
-    if (lang === 'zh') return `在${countryName}添加好友`;
-    return `Add Friend in ${countryName}`;
+    return t.addFriendInCountry.replace('{countryName}', countryName);
   };
 
   const getSearchPlaceholder = () => {
-    const lang = getAppLanguage();
-    if (lang === 'es') return "Buscar amigos en este país...";
-    if (lang === 'fr') return "Rechercher des amis dans ce pays...";
-    if (lang === 'de') return "Freunde in diesem Land suchen...";
-    if (lang === 'zh') return "搜索该国家的好友...";
-    return "Search friends in this country...";
+    return t.searchFriendsPlaceholder;
   };
 
   const getFriendsListedLabel = (num: number) => {
-    const lang = getAppLanguage();
-    if (lang === 'es') return `Amigos registrados (${num})`;
-    if (lang === 'fr') return `Amis répertoriés (${num})`;
-    if (lang === 'de') return `Gelistete Freunde (${num})`;
-    if (lang === 'zh') return `已登记名单 (${num})`;
-    return `Friends listed (${num})`;
+    return t.friendsRegisteredLabel.replace('{num}', String(num));
   };
 
   const getFilteredLabel = () => {
-    const lang = getAppLanguage();
-    if (lang === 'es') return "Filtrado";
-    if (lang === 'fr') return "Filtré";
-    if (lang === 'de') return "Gefiltert";
-    if (lang === 'zh') return "已过滤";
-    return "Filtered";
+    return t.filteredLabel;
   };
 
   const getNoFriendsMatchLabel = (query: string) => {
-    const lang = getAppLanguage();
-    if (lang === 'es') return `Ningún amigo coincide con "${query}" en este país.`;
-    if (lang === 'fr') return `Aucun ami ne correspond à "${query}" dans ce pays.`;
-    if (lang === 'de') return `Keine Freunde stimmen mit "${query}" in diesem Land überein.`;
-    if (lang === 'zh') return `该国家没有匹配 "${query}" 的好友。`;
-    return `No friends match "${query}" inside this country.`;
+    return t.noFriendsMatch.replace('{query}', query);
   };
 
   const getNoFriendsInCountryHeader = () => {
-    const lang = getAppLanguage();
-    if (lang === 'es') return "Sin amigos en este país";
-    if (lang === 'fr') return "Pas d'amis dans ce pays";
-    if (lang === 'de') return "Keine Freunde in diesem Land";
-    if (lang === 'zh') return "此国家/地区暂无好友";
-    return "No friends in this country";
+    return t.noFriendsInCountry;
   };
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -274,7 +244,7 @@ export default function CountryDetails({
                     }}
                     className="px-2 py-0.5 border border-slate-25 bg-slate-50 hover:bg-slate-100 rounded text-[9px] font-sans font-semibold text-slate-500 transition-colors cursor-pointer shrink-0"
                   >
-                    {getAppLanguage() === 'es' ? 'Restablecer' : getAppLanguage() === 'fr' ? 'Réinitialiser' : getAppLanguage() === 'de' ? 'Zurücksetzen' : getAppLanguage() === 'zh' ? '重置' : 'Reset'}
+                    {t.resetBtn}
                   </button>
                 )}
               </div>
@@ -335,22 +305,14 @@ export default function CountryDetails({
                       className={`p-1 hover:bg-slate-100 rounded-md transition-all flex items-center gap-1 cursor-pointer normal-case font-semibold text-[10px] ${
                         isSortMenuOpen ? 'text-indigo-650 bg-slate-100/80' : 'text-slate-400 hover:text-slate-600'
                       }`}
-                      title={(() => {
-                        const lang = getAppLanguage();
-                        if (lang === 'es') return "Ordenar amigos";
-                        if (lang === 'fr') return "Trier les amis";
-                        if (lang === 'de') return "Freunde sortieren";
-                        if (lang === 'zh') return "排序好友";
-                        return "Sort friends";
-                      })()}
+                      title={t.sortFriendsLabel}
                     >
                       <span className="font-sans text-[10px] text-slate-500 font-semibold tracking-normal hidden xs:inline mr-0.5">
                         {(() => {
-                          const lang = getAppLanguage();
-                          if (sortBy === 'name-asc') return lang === 'es' ? 'A-Z ⬆️' : lang === 'fr' ? 'A-Z ⬆️' : lang === 'de' ? 'A-Z ⬆️' : lang === 'zh' ? '名字 A-Z' : 'A-Z ⬆️';
-                          if (sortBy === 'name-desc') return lang === 'es' ? 'Z-A ⬇️' : lang === 'fr' ? 'Z-A ⬇️' : lang === 'de' ? 'Z-A ⬇️' : lang === 'zh' ? '名字 Z-A' : 'Z-A ⬇️';
-                          if (sortBy === 'date-asc') return lang === 'es' ? 'Antiguos' : lang === 'fr' ? 'Anciens' : lang === 'de' ? 'Älteste' : lang === 'zh' ? '最旧' : 'Oldest';
-                          return lang === 'es' ? 'Recientes' : lang === 'fr' ? 'Récents' : lang === 'de' ? 'Neueste' : lang === 'zh' ? '最新' : 'Newest';
+                          if (sortBy === 'name-asc') return t.sortActiveNameAsc;
+                          if (sortBy === 'name-desc') return t.sortActiveNameDesc;
+                          if (sortBy === 'date-asc') return t.sortActiveDateAsc;
+                          return t.sortActiveDateDesc;
                         })()}
                       </span>
                       <SlidersHorizontal className="h-3.5 w-3.5 stroke-[2.2]" />
@@ -373,14 +335,7 @@ export default function CountryDetails({
                             }`}
                           >
                             <span>
-                              {(() => {
-                                const l = getAppLanguage();
-                                if (l === 'es') return 'Alfabético (A-Z) ⬆️';
-                                if (l === 'fr') return 'Alphabétique (A-Z) ⬆️';
-                                if (l === 'de') return 'Alphabetisch (A-Z) ⬆️';
-                                if (l === 'zh') return '姓名 (A-Z) ⬆️';
-                                return 'Alphabetical (A-Z) ⬆️';
-                              })()}
+                              {t.sortAlphabeticalAsc}
                             </span>
                             {sortBy === 'name-asc' && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
                           </button>
@@ -395,14 +350,7 @@ export default function CountryDetails({
                             }`}
                           >
                             <span>
-                              {(() => {
-                                const l = getAppLanguage();
-                                if (l === 'es') return 'Alfabético (Z-A) ⬇️';
-                                if (l === 'fr') return 'Alphabétique (Z-A) ⬇️';
-                                if (l === 'de') return 'Alphabetisch (Z-A) ⬇️';
-                                if (l === 'zh') return '姓名 (Z-A) ⬇️';
-                                return 'Alphabetical (Z-A) ⬇️';
-                              })()}
+                              {t.sortAlphabeticalDesc}
                             </span>
                             {sortBy === 'name-desc' && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
                           </button>
@@ -417,14 +365,7 @@ export default function CountryDetails({
                             }`}
                           >
                             <span>
-                              {(() => {
-                                const l = getAppLanguage();
-                                if (l === 'es') return 'Recientes primero ⬇️';
-                                if (l === 'fr') return 'Récents d\'abord ⬇️';
-                                if (l === 'de') return 'Neueste zuerst ⬇️';
-                                if (l === 'zh') return '最新添加优先 ⬇️';
-                                return 'Newest first ⬇️';
-                              })()}
+                              {t.sortDateDesc}
                             </span>
                             {sortBy === 'date-desc' && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
                           </button>
@@ -439,14 +380,7 @@ export default function CountryDetails({
                             }`}
                           >
                             <span>
-                              {(() => {
-                                const l = getAppLanguage();
-                                if (l === 'es') return 'Antiguos primero ⬆️';
-                                if (l === 'fr') return 'Anciens d\'abord ⬆️';
-                                if (l === 'de') return 'Älteste zuerst ⬆️';
-                                if (l === 'zh') return '最旧添加优先 ⬆️';
-                                return 'Oldest first ⬆️';
-                              })()}
+                              {t.sortDateAsc}
                             </span>
                             {sortBy === 'date-asc' && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
                           </button>

@@ -3,7 +3,7 @@ import { Contact } from '../types';
 import { getCountryInfo, COUNTRY_LIST } from '../data/countries';
 import { resizeImage } from '../utils/image';
 import { X, Upload, Trash2, Globe, Heart, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { getTranslation, getAppLanguage } from '../utils/translations';
+import { getTranslation } from '../utils/translations';
 
 interface ContactFormProps {
   countryId: string;
@@ -135,9 +135,7 @@ export default function ContactForm({
       <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/40">
         <div>
           <h3 className="font-sans font-semibold text-slate-800 text-sm flex items-center gap-1.5">
-            <span>{editingContact ? 
-              (getAppLanguage() === 'es' ? '✍️ Editar detalles de amigo' : getAppLanguage() === 'fr' ? '✍️ Modifier les détails de l\'ami' : getAppLanguage() === 'de' ? '✍️ Freunddetails bearbeiten' : getAppLanguage() === 'zh' ? '✍️ 编辑好友详情' : '✍️ Edit Friend Details')
-              : (getAppLanguage() === 'es' ? '➕ Agregar amigo de viaje' : getAppLanguage() === 'fr' ? '➕ Ajouter un ami' : getAppLanguage() === 'de' ? '➕ Reisefreund hinzufügen' : getAppLanguage() === 'zh' ? '➕ 添加自驾/旅行好友' : '➕ Add Travel Friend')}</span>
+            <span>{editingContact ? t.editFriendDetails : t.addTravelFriend}</span>
           </h3>
           <div className="flex items-center gap-1.5 mt-0.5">
             <span className="text-sm select-none">{countryInfo?.flag || '🗺️'}</span>
@@ -164,12 +162,12 @@ export default function ContactForm({
         {/* Input: Name */}
         <div className="flex flex-col gap-1.5">
           <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">
-            {getAppLanguage() === 'es' ? 'Nombre' : getAppLanguage() === 'fr' ? 'Nom' : getAppLanguage() === 'de' ? 'Name' : getAppLanguage() === 'zh' ? '姓名' : 'Name'} <span className="text-red-500">*</span>
+            {t.nameLabel} <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
             required
-            placeholder="Who did you meet?"
+            placeholder={t.whoDidYouMeet}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans font-medium"
@@ -181,11 +179,11 @@ export default function ContactForm({
           {/* Input: City */}
           <div className="flex flex-col gap-1.5">
             <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">
-              {getAppLanguage() === 'es' ? 'Ciudad' : getAppLanguage() === 'fr' ? 'Ville' : getAppLanguage() === 'de' ? 'Stadt' : getAppLanguage() === 'zh' ? '省市/城市' : 'City'} <span className="text-[10px] text-slate-400 font-normal">({getAppLanguage() === 'es' ? 'Opcional' : getAppLanguage() === 'fr' ? 'Optionnel' : getAppLanguage() === 'de' ? 'Optional' : getAppLanguage() === 'zh' ? '选填' : 'Optional'})</span>
+              {t.cityLabel} <span className="text-[10px] text-slate-400 font-normal">({t.optional})</span>
             </label>
             <input
               type="text"
-              placeholder="e.g. Paris, Kyoto"
+              placeholder={t.cityPlaceholder}
               value={city}
               onChange={(e) => setCity(e.target.value)}
               className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans font-medium"
@@ -195,11 +193,11 @@ export default function ContactForm({
           {/* Input: Contact details */}
           <div className="flex flex-col gap-1.5">
             <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">
-              {getAppLanguage() === 'es' ? 'Contacto' : getAppLanguage() === 'fr' ? 'Contact' : getAppLanguage() === 'de' ? 'Kontakt' : getAppLanguage() === 'zh' ? '联系方式' : 'Contact'} <span className="text-[10px] text-slate-400 font-normal">({getAppLanguage() === 'es' ? 'Opcional' : getAppLanguage() === 'fr' ? 'Optionnel' : getAppLanguage() === 'de' ? 'Optional' : getAppLanguage() === 'zh' ? '选填' : 'Optional'})</span>
+              {t.contactLabel} <span className="text-[10px] text-slate-400 font-normal">({t.optional})</span>
             </label>
             <input
               type="text"
-              placeholder="e.g. email, phone, @handle"
+              placeholder={t.contactPlaceholder}
               value={contactInfo}
               onChange={(e) => setContactInfo(e.target.value)}
               className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans font-medium"
@@ -208,7 +206,7 @@ export default function ContactForm({
              {/* Drag and drop image upload widget */}
         <div className="flex flex-col gap-1.5">
           <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">
-            {getAppLanguage() === 'es' ? 'Foto' : getAppLanguage() === 'fr' ? 'Photo' : getAppLanguage() === 'de' ? 'Foto' : getAppLanguage() === 'zh' ? '照片/头像' : 'Picture'} <span className="text-[10px] text-slate-400 font-normal">({getAppLanguage() === 'es' ? 'Opcional' : getAppLanguage() === 'fr' ? 'Optionnel' : getAppLanguage() === 'de' ? 'Optional' : getAppLanguage() === 'zh' ? '选填' : 'Optional'})</span>
+            {t.pictureLabel} <span className="text-[10px] text-slate-400 font-normal">({t.optional})</span>
           </label>
 
           <div className="flex items-center gap-3">
@@ -241,10 +239,10 @@ export default function ContactForm({
                 </div>
                 <div className="text-center font-sans">
                   <span className="text-[11px] font-medium text-slate-600 group-hover:text-indigo-650 transition-colors">
-                    {getAppLanguage() === 'es' ? 'Subir foto de amigo' : getAppLanguage() === 'fr' ? 'Télécharger une photo' : getAppLanguage() === 'de' ? 'Freundesfoto hochladen' : getAppLanguage() === 'zh' ? '上传好友照片/头像' : 'Upload friend picture'}
+                    {t.uploadFriendPicture}
                   </span>
                   <p className="text-[9px] text-slate-400 mt-0.5">
-                    {getAppLanguage() === 'es' ? 'Arrastra y suelta o edita. Comprimido para caché rápido.' : getAppLanguage() === 'fr' ? 'Glissez-déposez ou modifiez. Compressé pour un cache rapide.' : getAppLanguage() === 'de' ? 'Per Drag-and-Drop herüberziehen. Für schnelles Caching komprimiert.' : getAppLanguage() === 'zh' ? '支持拖拽。已压缩优化以实现快速加载。' : 'Drag and drop or edit file. Compressed for fast caching.'}
+                    {t.dragAndDropText}
                   </p>
                 </div>
               </div>
@@ -263,7 +261,7 @@ export default function ContactForm({
           {isProcessingImage && (
             <span className="text-[10px] text-indigo-600 font-semibold flex items-center gap-1.5 mt-1 animate-pulse font-sans">
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
-              {getAppLanguage() === 'es' ? 'Comprimiendo y redimensionando foto...' : getAppLanguage() === 'fr' ? 'Compression et redimensionnement...' : getAppLanguage() === 'de' ? 'Foto wird komprimiert und skaliert...' : getAppLanguage() === 'zh' ? '正在压缩并裁剪照片...' : 'Compressing and resizing photo...'}
+              {t.compressingPhoto}
             </span>
           )}
         </div>     </div>
@@ -271,11 +269,11 @@ export default function ContactForm({
         {/* Input: Notes / Story */}
         <div className="flex flex-col gap-1.5">
           <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">
-            {getAppLanguage() === 'es' ? 'Notas de viaje y recuerdos' : getAppLanguage() === 'fr' ? 'Notes de voyage & souvenirs' : getAppLanguage() === 'de' ? 'Reisenotizen & Erinnerungen' : getAppLanguage() === 'zh' ? '旅行日志与回忆' : 'Travel notes & memories'} <span className="text-[10px] text-slate-400 font-normal">({getAppLanguage() === 'es' ? 'Opcional' : getAppLanguage() === 'fr' ? 'Optionnel' : getAppLanguage() === 'de' ? 'Optional' : getAppLanguage() === 'zh' ? '选填' : 'Optional'})</span>
+            {t.travelNotesLabel} <span className="text-[10px] text-slate-400 font-normal">({t.optional})</span>
           </label>
           <textarea
             rows={3}
-            placeholder={getAppLanguage() === 'es' ? 'Comparte una nota breve sobre cómo se conocieron, qué hicieron, o recuerdos personalizados...' : getAppLanguage() === 'fr' ? 'Partagez une note sur votre rencontre, ce que vous avez fait ou des souvenirs...' : getAppLanguage() === 'de' ? 'Teile eine kurze Notiz darüber, wie ihr euch getroffen habt, was ihr unternommen habt...' : getAppLanguage() === 'zh' ? '写下一小段记录描述你们是如何结识的，一起玩了什么，或者你们的专属旅行故事...' : 'Share a short note about how you met reference, what you did, or custom travel memories...'}
+            placeholder={t.notesPlaceholder}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all font-sans leading-relaxed resize-none"
@@ -303,16 +301,12 @@ export default function ContactForm({
             {isSubmitting ? (
               <>
                 <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>{editingContact ? 
-                  (getAppLanguage() === 'es' ? 'Guardando cambios...' : getAppLanguage() === 'fr' ? 'Enregistrement...' : getAppLanguage() === 'de' ? 'Änderungen werden gespeichert...' : getAppLanguage() === 'zh' ? '正在保存...' : 'Saving Changes...')
-                  : (getAppLanguage() === 'es' ? 'Agregando amigo...' : getAppLanguage() === 'fr' ? 'Ajout...' : getAppLanguage() === 'de' ? 'Freund wird hinzugefügt...' : getAppLanguage() === 'zh' ? '正在添加...' : 'Adding Friend...')}</span>
+                <span>{editingContact ? t.savingChanges : t.addingFriend}</span>
               </>
             ) : (
               <>
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                <span>{editingContact ? 
-                  (getAppLanguage() === 'es' ? 'Guardar' : getAppLanguage() === 'fr' ? 'Enregistrer' : getAppLanguage() === 'de' ? 'Änderungen speichern' : getAppLanguage() === 'zh' ? '保存更改' : 'Save Changes')
-                  : (getAppLanguage() === 'es' ? 'Agregar de viaje' : getAppLanguage() === 'fr' ? 'Ajouter l’ami' : getAppLanguage() === 'de' ? 'Freund hinzufügen' : getAppLanguage() === 'zh' ? '保存自驾好友' : 'Add Travel Friend')}</span>
+                <span>{editingContact ? t.saveBtn : t.addTravelFriendBtn}</span>
               </>
             )}
           </button>

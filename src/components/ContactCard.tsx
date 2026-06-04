@@ -2,7 +2,7 @@ import React from 'react';
 import { Contact } from '../types';
 import { Mail, Phone, MessageSquare, MapPin, Edit, Trash2, Calendar, User } from 'lucide-react';
 import { getCountryInfo } from '../data/countries';
-import { getAppLanguage } from '../utils/translations';
+import { getTranslation, getAppLanguage } from '../utils/translations';
 
 interface ContactCardProps {
   key?: string | number;
@@ -169,11 +169,8 @@ export default function ContactCard({
               month: 'short',
               day: 'numeric'
             });
-            if (lang === 'es') return `Agregado el ${formatted}`;
-            if (lang === 'fr') return `Ajouté le ${formatted}`;
-            if (lang === 'de') return `Am ${formatted} hinzugefügt`;
-            if (lang === 'zh') return `添加于 ${formatted}`;
-            return `Added on ${formatted}`;
+            const t = getTranslation();
+            return t.addedOnFormat.replace('{date}', formatted);
           })()}</span>
         </span>
         <span className="text-slate-300 font-mono text-[8px]">ID: {contact.id.substring(0, 4).toUpperCase()}</span>

@@ -26,21 +26,11 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   const t = getTranslation();
   
   const getFriendLabel = (count: number) => {
-    const lang = getAppLanguage();
-    if (lang === 'es') return count === 1 ? 'Amigo' : 'Amigos';
-    if (lang === 'fr') return count === 1 ? 'Ami' : 'Amis';
-    if (lang === 'de') return count === 1 ? 'Freund' : 'Freunde';
-    if (lang === 'zh') return '位好友';
-    return count === 1 ? 'Friend' : 'Friends';
+    return count === 1 ? t.friendSingular : t.friendPlural;
   };
 
   const getCountriesLabel = () => {
-    const lang = getAppLanguage();
-    if (lang === 'es') return 'Países';
-    if (lang === 'fr') return 'Pays';
-    if (lang === 'de') return 'Länder';
-    if (lang === 'zh') return '国家';
-    return 'Countries';
+    return t.countriesLabel;
   };
 
   const [geoData, setGeoData] = useState<any>(null);
@@ -890,7 +880,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 <Search className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
                 <input
                   type="text"
-                  placeholder={getAppLanguage() === 'es' ? 'Buscar países o amigos...' : getAppLanguage() === 'fr' ? 'Rechercher des pays ou des amis...' : getAppLanguage() === 'de' ? 'Länder oder Freunde suchen...' : getAppLanguage() === 'zh' ? '搜索省/国家/好友...' : 'Search countries or friends...'}
+                  placeholder={t.searchMapPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus
@@ -1028,7 +1018,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
                     {filteredCountries.length === 0 && filteredFriends.length === 0 && (
                       <div className="py-8 px-4 text-xs text-slate-400 text-center font-sans">
-                        {getAppLanguage() === 'es' ? 'Ningún país o amigo coincide' : getAppLanguage() === 'fr' ? 'Aucun pays ou ami trouvé' : getAppLanguage() === 'de' ? 'Keine Länder oder Freunde gefunden' : getAppLanguage() === 'zh' ? '未找到匹配的主机/省市/好友' : 'No country or friend matches'}
+                        {t.noMatchesFound}
                       </div>
                     )}
                   </>
@@ -1069,7 +1059,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                   <div className="overflow-y-auto flex-grow divide-y divide-slate-100/60 p-1">
                     {contacts.length === 0 ? (
                       <div className="py-8 px-4 text-center text-[11px] text-slate-400">
-                        {getAppLanguage() === 'es' ? 'Aún no tienes amigos registrados. ¡Haz clic en un país para agregarlos!' : getAppLanguage() === 'fr' ? 'Vous n’avez pas encore enregistré d’amis. Cliquez sur un pays pour en ajouter !' : getAppLanguage() === 'de' ? 'Du hast noch keine Freunde eingetragen. Klicke auf ein Land, um einen hinzuzufügen!' : getAppLanguage() === 'zh' ? '您尚未记录任何好友。点击地图上的国家即可添加！' : "You don't have any friends recorded yet. Click a country to add!"}
+                        {t.noFriendsRecorded}
                       </div>
                     ) : (
                       Object.keys(contactCounts).map((paddedId) => {
