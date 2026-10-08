@@ -9,6 +9,11 @@ export interface Contact {
   photoUrl?: string; // base64 string
   notes?: string;
   createdAt: string;
+  // Account Simulation Fields for Fixed vs Live Modes
+  hasLinkedAccount?: boolean;
+  homeCountryId?: string;
+  geolocationEnabled?: boolean;
+  liveCountryId?: string;
 }
 
 export interface CountryData {

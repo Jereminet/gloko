@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Contact } from '../types';
 import { getCountryInfo, COUNTRY_LIST } from '../data/countries';
 import { resizeImage } from '../utils/image';
-import { X, Upload, Trash2, Globe, Heart, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { X, Upload, Trash2, Globe, Heart, CheckCircle2, AlertTriangle, QrCode, MapPin, Bell } from 'lucide-react';
 import { getTranslation } from '../utils/translations';
 
 interface ContactFormProps {
@@ -31,6 +31,12 @@ export default function ContactForm({
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Simulation parameters for Fixed/Live Map Modes
+  const [hasLinkedAccount, setHasLinkedAccount] = useState(false);
+  const [homeCountryId, setHomeCountryId] = useState(countryId);
+  const [geolocationEnabled, setGeolocationEnabled] = useState(false);
+  const [liveCountryId, setLiveCountryId] = useState(countryId);
+
   const countryInfo = getCountryInfo(countryId);
 
   // Populate data if editing
@@ -42,6 +48,10 @@ export default function ContactForm({
       setContactInfo(editingContact.contactInfo || '');
       setNotes(editingContact.notes || '');
       setPhotoUrl(editingContact.photoUrl || '');
+      setHasLinkedAccount(!!editingContact.hasLinkedAccount);
+      setHomeCountryId(editingContact.homeCountryId || editingContact.countryId);
+      setGeolocationEnabled(!!editingContact.geolocationEnabled);
+      setLiveCountryId(editingContact.liveCountryId || editingContact.countryId);
     } else {
       // Clear fields for new contact
       setName('');
@@ -49,6 +59,10 @@ export default function ContactForm({
       setContactInfo('');
       setNotes('');
       setPhotoUrl('');
+      setHasLinkedAccount(false);
+      setHomeCountryId(countryId);
+      setGeolocationEnabled(false);
+      setLiveCountryId(countryId);
     }
     setError(null);
   }, [editingContact, countryId]);
@@ -122,6 +136,11 @@ export default function ContactForm({
         contactInfo: contactInfo.trim() || '',
         notes: notes.trim() || '',
         photoUrl: photoUrl || undefined,
+        // Simulation parameters
+        hasLinkedAccount,
+        homeCountryId,
+        geolocationEnabled,
+        liveCountryId,
       });
     } catch (err: any) {
       setError(err?.message || 'Error saving. Please try again.');
@@ -265,6 +284,86 @@ export default function ContactForm({
             </span>
           )}
         </div>     </div>
+
+        {/* Linked Gloko Account Simulation section */}
+        <div className="bg-slate-50/70 border border-slate-200/60 rounded-2xl p-3.5 space-y-3.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <QrCode className="w-4 h-4 text-indigo-500" />
+              <div className="text-xs font-bold text-slate-800">Linked Gloko Account</div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hasLinkedAccount}
+                onChange={(e) => {
+                  setHasLinkedAccount(e.target.checked);
+                  if (e.target.checked) {
+                    setHomeCountryId(homeCountryId || countryId);
+                    setLiveCountryId(liveCountryId || countryId);
+                  }
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-650"></div>
+            </label>
+          </div>
+
+          {hasLinkedAccount && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1.5 border-t border-slate-200/50">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest font-sans">
+                  Home Region (Onboarding)
+                </label>
+                <select
+                  value={homeCountryId}
+                  onChange={(e) => setHomeCountryId(e.target.value)}
+                  className="w-full text-xs p-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                >
+                  {COUNTRY_LIST.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.flag} {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest font-sans">
+                    Live GPS Location
+                  </label>
+                  <label className="relative inline-flex items-center cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={geolocationEnabled}
+                      onChange={(e) => setGeolocationEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1.5px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-500"></div>
+                  </label>
+                </div>
+                {geolocationEnabled ? (
+                  <select
+                    value={liveCountryId}
+                    onChange={(e) => setLiveCountryId(e.target.value)}
+                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer text-slate-800"
+                  >
+                    {COUNTRY_LIST.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.flag} {c.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="text-[10px] text-slate-400 italic py-2 px-1">
+                    Using home/manual location
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Input: Notes / Story */}
         <div className="flex flex-col gap-1.5">

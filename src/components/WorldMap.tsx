@@ -3,8 +3,9 @@ import * as d3 from 'd3';
 import { feature } from 'topojson-client';
 import { COUNTRY_BY_ID, getCountryInfo, COUNTRY_LIST } from '../data/countries';
 import { Contact } from '../types';
-import { ZoomIn, ZoomOut, RotateCcw, Search, MapPin, X } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Search, MapPin, X, Clock, Calendar, Radio } from 'lucide-react';
 import { getTranslation, getAppLanguage, getTranslatedOcean } from '../utils/translations';
+import PhotoModal from './PhotoModal';
 
 interface WorldMapProps {
   contacts: Contact[];
@@ -13,6 +14,10 @@ interface WorldMapProps {
   countryColors?: Record<string, string>;
   onMapLoaded?: () => void;
   onLogoClick?: () => void;
+  userHomeCountryId?: string;
+  userGeolocationEnabled?: boolean;
+  isLiveMode?: boolean;
+  onToggleLiveMode?: () => void;
 }
 
 const WorldMap = forwardRef<any, WorldMapProps>(({
@@ -22,6 +27,10 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   countryColors = {},
   onMapLoaded,
   onLogoClick,
+  userHomeCountryId,
+  userGeolocationEnabled,
+  isLiveMode: controlledLiveMode,
+  onToggleLiveMode,
 }, ref) => {
   const t = getTranslation();
   
@@ -33,6 +42,19 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     return t.countriesLabel;
   };
 
+  const [internalLiveMode, setInternalLiveMode] = useState(false);
+  const isLiveMode = controlledLiveMode !== undefined ? controlledLiveMode : internalLiveMode;
+
+  const handleToggleLiveMode = () => {
+    if (onToggleLiveMode) {
+      onToggleLiveMode();
+    } else {
+      setInternalLiveMode((prev) => !prev);
+    }
+    setFocusedCountryId(null);
+    setMobileHoveredId(null);
+    setHoveredCountry(null);
+  };
   const [geoData, setGeoData] = useState<any>(null);
   const [landBounds, setLandBounds] = useState<{ minX: number; maxX: number; minY: number; maxY: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -182,8 +204,17 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     y: number;
   } | null>(null);
 
-  // Track double tap / mobile hover state
+  // Track double tap / mobile hover state and focused country for city display & centering
   const [mobileHoveredId, setMobileHoveredId] = useState<string | null>(null);
+  const [focusedCountryId, setFocusedCountryId] = useState<string | null>(null);
+  const [expandedPhoto, setExpandedPhoto] = useState<{ url: string; name: string } | null>(null);
+
+  // Synchronize focused country when selectedCountryId changes
+  useEffect(() => {
+    if (selectedCountryId) {
+      setFocusedCountryId(selectedCountryId);
+    }
+  }, [selectedCountryId]);
 
   // States for dynamic ocean decorations and labels layout
   const [randomDecorations, setRandomDecorations] = useState<any[]>([]);
@@ -343,8 +374,20 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   // Calculate contact counts by country ID (padded)
   const contactCounts: Record<string, number> = {};
   contacts.forEach((c) => {
+    if (!c.countryId) return;
     const padded = c.countryId.padStart(3, '0');
     contactCounts[padded] = (contactCounts[padded] || 0) + 1;
+  });
+
+  // Calculate live location contact counts by country ID (padded) - Friends only, excluding connected user
+  const liveContactCounts: Record<string, number> = {};
+  contacts.forEach((c) => {
+    const isLive = Boolean(c.geolocationEnabled);
+    if (!isLive) return;
+    const targetCountry = c.liveCountryId || c.countryId;
+    if (!targetCountry) return;
+    const padded = targetCountry.padStart(3, '0');
+    liveContactCounts[padded] = (liveContactCounts[padded] || 0) + 1;
   });
 
   // Fetch and parse world map boundaries with multiple CDN fallbacks
@@ -395,39 +438,78 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     tryFetch(0);
   }, []);
 
-  // Helper to resolve coloring: unrecorded stays light slate gray, recorded receives customized or default pretty pastel hue!
-  const getCountryColor = (countryId: string, count: number, isSelected: boolean) => {
+  // Helper to resolve coloring: unrecorded stays crisp sandy off-white;
+  // recorded countries have base color that starts light and gets darker for every 5 friends in that country
+  // (ex: france 2 friends -> light orange, germany 13 friends -> darker orange, russia 33 friends -> even darker orange)
+  const getCountryColor = (countryId: string, count: number, isSelected: boolean, inLiveMode: boolean = false) => {
     const paddedId = countryId.padStart(3, '0');
-    
-    if (countryColors && countryColors[paddedId]) {
-      return countryColors[paddedId];
-    }
 
+    // Unrecorded country (0 friends, or 0 live people in live mode)
     if (count === 0) {
       if (isSelected) {
         return '#e0ccaa'; // Rich/deep warm golden-biscuit color when selected
       }
-      return '#f4f1ea'; // Beautiful crisp sandy off-white (Google Maps style!)
+      return '#f4f1ea'; // Beautiful crisp sandy off-white (Google Maps style)
     }
 
-    // Convert country ID to hash-based hue
-    let hash = 0;
-    for (let i = 0; i < paddedId.length; i++) {
-      hash = paddedId.charCodeAt(i) + ((hash << 5) - hash);
+    // Tier based on 5 friends increments (0-4: tier 0, 5-9: tier 1, 10-14: tier 2, 15-19: tier 3, etc.)
+    const tier = Math.floor(count / 5);
+
+    // If user has customized this country's color, adjust that base hue by tier
+    if (countryColors && countryColors[paddedId]) {
+      try {
+        const customHsl = d3.hsl(countryColors[paddedId]);
+        if (customHsl && !isNaN(customHsl.h)) {
+          customHsl.l = Math.max(0.18, customHsl.l - tier * 0.07);
+          return isSelected ? customHsl.darker(0.25).formatHex() : customHsl.formatHex();
+        }
+      } catch (err) {
+        // Fall back to orange/emerald scale
+      }
     }
-    const hue = Math.abs(hash) % 360;
+
+    if (inLiveMode) {
+      // Distinct vibrant emerald live radar hue (representing real-time live GPS signals)
+      const baseHue = 152; // Emerald green
+      const saturation = 0.78;
+      const lightness = Math.max(0.26, 0.65 - tier * 0.08);
+      const emeraldHsl = d3.hsl(baseHue, saturation, lightness);
+      if (isSelected) {
+        return emeraldHsl.darker(0.2).formatHex();
+      }
+      return emeraldHsl.formatHex();
+    }
+
+    // Default base color: warm, vibrant Orange
+    // Tier 0 (1-4 friends): Light Orange (lightness 82%)
+    // Tier 1 (5-9 friends): Light-medium Orange (lightness 74%)
+    // Tier 2 (10-14 friends): Darker Orange (lightness 66%)
+    // Tier 3 (15-19 friends): Rich Orange (lightness 58%)
+    // Tier 4 (20-24 friends): Deep Orange (lightness 50%)
+    // Tier 5 (25-29 friends): Dark Rust Orange (lightness 42%)
+    // Tier 6 (30-34 friends): Even Darker Orange (lightness 34%)
+    // Tier 7+ (35+ friends): Deepest Dark Orange (lightness down to 24%)
+    const baseHue = 27; // Warm orange hue
+    const saturation = 0.92;
+    const lightness = Math.max(0.24, 0.82 - tier * 0.08);
+    const orangeHsl = d3.hsl(baseHue, saturation, lightness);
 
     if (isSelected) {
-      return `hsl(${hue}, 95%, 45%)`; // Extremely rich, vibrant, highly saturated color when selected (strong click feedback!)
+      return orangeHsl.darker(0.2).formatHex();
     }
 
-    return `hsl(${hue}, 75%, 72%)`; // Soft beautiful natural pastel
+    return orangeHsl.formatHex();
   };
 
-  // Expose imperative handle to allow resetting view from parent
+  // Expose imperative handle to allow resetting view or clearing pop-ups from parent
   useImperativeHandle(ref, () => ({
     resetView: () => {
       handleReset();
+    },
+    clearFocusedCountry: () => {
+      setFocusedCountryId(null);
+      setMobileHoveredId(null);
+      setHoveredCountry(null);
     }
   }));
 
@@ -513,8 +595,11 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     
     const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
     
-    // Clear dynamic country highlighted label if zoomed on mobile
-    if (isMobile && mobileHoveredId) {
+    // Clear dynamic country highlighted label and dismiss bottom pop-up if zoomed
+    if (focusedCountryId) {
+      setFocusedCountryId(null);
+    }
+    if (mobileHoveredId) {
       setMobileHoveredId(null);
       setHoveredCountry(null);
     }
@@ -531,14 +616,21 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
   const handleZoomIn = () => {
     if (selectedCountryId) return;
+    if (focusedCountryId) setFocusedCountryId(null);
     scaleRelative(1.5);
   };
   const handleZoomOut = () => {
     if (selectedCountryId) return;
+    if (focusedCountryId) setFocusedCountryId(null);
     scaleRelative(1 / 1.5);
   };
   const handleReset = () => {
     if (selectedCountryId) return;
+    if (focusedCountryId) {
+      setFocusedCountryId(null);
+      setMobileHoveredId(null);
+      setHoveredCountry(null);
+    }
     const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
     const initialZoom = isMobile ? 1.15 : 1.25;
     const initialPos = getNigerCenteredPosition(initialZoom);
@@ -558,6 +650,14 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   const handleMouseMove = (e: React.MouseEvent) => {
     if (selectedCountryId) return; // Lock map interaction when country modal is open
     if (!isDragging) return;
+
+    // Pop up for opening a country should disappear when the user moves the map
+    if (focusedCountryId) {
+      setFocusedCountryId(null);
+      setMobileHoveredId(null);
+      setHoveredCountry(null);
+    }
+
     const svgPoint = clientToSvgCoords(e.clientX, e.clientY);
     const nextPos = {
       x: svgPoint.x - dragStart.current.x,
@@ -602,6 +702,14 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (selectedCountryId) return; // Lock map interaction when country modal is open completely
+    
+    // Pop up for opening a country should disappear when the user moves the map
+    if (focusedCountryId) {
+      setFocusedCountryId(null);
+      setMobileHoveredId(null);
+      setHoveredCountry(null);
+    }
+
     if (e.touches.length === 2 && touchStartDist.current !== null) {
       const t1 = e.touches[0];
       const t2 = e.touches[1];
@@ -670,6 +778,9 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   // Extremely smooth, responsive mouse-centered focal wheel zoom
   const handleWheel = (e: React.WheelEvent) => {
     if (selectedCountryId) return; // Lock map interaction when country modal is open
+    if (focusedCountryId) {
+      setFocusedCountryId(null);
+    }
     if (mobileHoveredId) {
       setMobileHoveredId(null);
       setHoveredCountry(null);
@@ -695,66 +806,90 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     setZoom(nextZoom);
   };
 
-  // Click handler on paths with double-click simulation on mobile touchscreens
+  // Center screen smoothly around a specific country feature with zoom adapted to country physical size
+  const centerOnCountry = (feat: any) => {
+    if (!feat) return;
+
+    // Isolate mainland / largest landmass for accurate bounding & centroid (filters out far-flung overseas territories)
+    let targetGeometry = feat.geometry;
+    if (feat.geometry && feat.geometry.type === 'MultiPolygon' && feat.geometry.coordinates) {
+      let maxArea = 0;
+      let largestPoly: any = null;
+      feat.geometry.coordinates.forEach((polyCoords: any) => {
+        const polyFeat = { type: 'Feature', geometry: { type: 'Polygon', coordinates: polyCoords } };
+        const a = pathGenerator.area(polyFeat as any);
+        if (a > maxArea) {
+          maxArea = a;
+          largestPoly = polyCoords;
+        }
+      });
+      // If the largest polygon is substantial (e.g. mainland France vs French Guiana, or 48 contiguous US states), use it for framing
+      if (largestPoly && maxArea > 15) {
+        targetGeometry = { type: 'Polygon', coordinates: largestPoly };
+      }
+    }
+
+    const framingFeature: any = { type: 'Feature', geometry: targetGeometry };
+    const bounds = pathGenerator.bounds(framingFeature);
+    if (!bounds) return;
+
+    const [[x0, y0], [x1, y1]] = bounds;
+    if (isNaN(x0) || isNaN(y0) || isNaN(x1) || isNaN(y1)) return;
+
+    const centroid = pathGenerator.centroid(framingFeature);
+    const cx = !isNaN(centroid[0]) && !isNaN(centroid[1]) ? centroid[0] : (x0 + x1) / 2;
+    const cy = !isNaN(centroid[1]) && !isNaN(centroid[1]) ? centroid[1] : (y0 + y1) / 2;
+
+    const dx = Math.max(Math.abs(x1 - x0), 6);
+    const dy = Math.max(Math.abs(y1 - y0), 6);
+
+    let visibleW = width;
+    let visibleH = height;
+    let svgCenterX = width / 2;
+    let svgCenterY = height / 2;
+
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const R = Math.max(rect.width / width, rect.height / height);
+      visibleW = rect.width / R;
+      visibleH = rect.height / R;
+      const offsetX = (rect.width - width * R) / 2;
+      const offsetY = (rect.height - height * R) / 2;
+      svgCenterX = (rect.width / 2 - offsetX) / R;
+      svgCenterY = (rect.height / 2 - offsetY) / R;
+    }
+
+    // Adaptive zoom scaling directly proportional to the country's physical width and height
+    const zoomX = (visibleW * 0.65) / dx;
+    const zoomY = (visibleH * 0.58) / dy;
+    let targetZoom = Math.min(zoomX, zoomY);
+    // Smoothly clamp between 0.9 (continental giants like Russia/USA) and 6.8 (compact countries)
+    targetZoom = Math.max(0.9, Math.min(targetZoom, 6.8));
+
+    const nextPos = {
+      x: svgCenterX - cx * targetZoom,
+      y: svgCenterY - cy * targetZoom,
+    };
+
+    setPosition(limitPosition(nextPos, targetZoom));
+    setZoom(targetZoom);
+  };
+
+  // Click handler on paths: centers on the country with adaptive zoom and shows bottom pop-up
   const handleCountryClick = (e: React.MouseEvent | React.TouchEvent, feature: any) => {
     if (!feature || feature.id === undefined || feature.id === null) return;
     const rawId = feature.id.toString();
     const paddedId = rawId.padStart(3, '0');
     const info = getCountryInfo(paddedId);
     if (!info) return;
-    const countryName = info.name || `Country (${rawId})`;
 
-    // Detect touch / mobile interface
-    const isMobile = typeof window !== 'undefined' && (
-      'ontouchstart' in window || 
-      navigator.maxTouchPoints > 0 || 
-      window.innerWidth <= 768
-    );
+    // Focus country and center on it with adaptive framing zoom
+    setFocusedCountryId(paddedId);
+    setMobileHoveredId(paddedId);
+    centerOnCountry(feature);
 
-    if (isMobile) {
-      if (mobileHoveredId === paddedId) {
-        // Second click/tap: trigger actual country selection!
-        onSelectCountry(paddedId, countryName);
-        setMobileHoveredId(null);
-        setHoveredCountry(null);
-      } else {
-        // First click/tap: mock the desktop "hover" detail tooltip
-        setMobileHoveredId(paddedId);
-        
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (rect) {
-          let clientX = 0;
-          let clientY = 0;
-          
-          if ('clientX' in e) {
-            clientX = (e as any).clientX;
-            clientY = (e as any).clientY;
-          } else if ('touches' in e && (e as any).touches.length > 0) {
-            clientX = (e as any).touches[0].clientX;
-            clientY = (e as any).touches[0].clientY;
-          } else if ('changedTouches' in e && (e as any).changedTouches.length > 0) {
-            clientX = (e as any).changedTouches[0].clientX;
-            clientY = (e as any).changedTouches[0].clientY;
-          }
-
-          const mouseX = clientX - rect.left;
-          const mouseY = clientY - rect.top;
-
-          setHoveredCountry({
-            id: paddedId,
-            name: info.name,
-            code: info.code,
-            flag: info.flag,
-            count: contactCounts[paddedId] || 0,
-            x: mouseX,
-            y: mouseY - 15,
-          });
-        }
-      }
-    } else {
-      // Laptop or Desktop: single click immediately reveals selection
-      onSelectCountry(paddedId, countryName);
-    }
+    // Dismiss any hover tooltip so only the unified bottom pop-up appears
+    setHoveredCountry(null);
   };
 
   // Mouse hover details (for Tooltip) - disabled on mobile/touch screen to avoid conflicts
@@ -766,6 +901,9 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
       window.innerWidth <= 768
     );
     if (isMobile) return;
+
+    // If a country is already focused, do not show hover tooltip
+    if (focusedCountryId) return;
 
     if (!feature || feature.id === undefined || feature.id === null) return;
     const rawId = feature.id.toString();
@@ -781,19 +919,23 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
+    const count = (isLiveMode ? liveContactCounts[paddedId] : contactCounts[paddedId]) || 0;
+
     setHoveredCountry({
       id: paddedId,
       name: info.name,
       code: info.code,
       flag: info.flag,
-      count: contactCounts[paddedId] || 0,
+      count,
       x: mouseX,
       y: mouseY - 15, // offset above cursor
     });
   };
 
   const handleCountryMouseMove = (e: React.MouseEvent, feature: any) => {
-    // Left empty intentionally so that country tooltip stays locked at its point of entry
+    if (focusedCountryId && hoveredCountry) {
+      setHoveredCountry(null);
+    }
   };
 
   const handleCountryMouseLeave = () => {
@@ -822,14 +964,24 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     : [];
 
   const handleSearchSelect = (countryId: string, countryName: string) => {
-    onSelectCountry(countryId, countryName);
+    const paddedId = countryId.padStart(3, '0');
+    onSelectCountry(paddedId, countryName);
+    setFocusedCountryId(paddedId);
     setSearchQuery('');
     setShowDropdown(false);
     setMobileHoveredId(null);
     setHoveredCountry(null);
 
-    // Focus / slide map to center approximately based on projection
-    // For extreme simplicity and polish, we center on selection or reset zoom
+    // Center on the searched country
+    if (geoData?.features) {
+      const feat = geoData.features.find(
+        (f: any) => f?.id?.toString()?.padStart(3, '0') === paddedId
+      );
+      if (feat) {
+        centerOnCountry(feat);
+        return;
+      }
+    }
     handleReset();
   };
 
@@ -919,24 +1071,19 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                   <span 
                     className="text-base sm:text-lg font-sans font-extrabold uppercase tracking-widest text-[#0a1e35] flex items-center select-none"
                   >
-                    GL
-                    <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
-                      <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
-                    </span>
-                    K
-                    <span className="inline-flex items-center justify-center h-[1em] w-[1em] mx-[0.08em] align-middle mt-[-0.08em] select-none pointer-events-none rounded-full bg-white border border-slate-200/80 shadow-[0_1.5px_3.5px_rgba(15,23,42,0.06)] p-[2.5px]">
-                      <img src="/favicon.png" alt="O" className="w-full h-full object-contain pointer-events-none select-none" />
-                    </span>
+                    GLOKO
                   </span>
                 </div>
 
-                <button
-                  onClick={() => setIsSearchExpanded(true)}
-                  className="p-1.5 hover:bg-slate-150/55 rounded-lg text-slate-500 hover:text-indigo-650 transition-colors cursor-pointer flex items-center justify-center"
-                  title={t.searchFriends}
-                >
-                  <Search className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => setIsSearchExpanded(true)}
+                    className="p-1.5 hover:bg-slate-150/55 rounded-lg text-slate-500 hover:text-indigo-650 transition-colors cursor-pointer flex items-center justify-center"
+                    title={t.searchFriends}
+                  >
+                    <Search className="h-4 w-4" />
+                  </button>
+                </div>
               </>
             )}
           </div>
@@ -1053,78 +1200,130 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 </div>
               </div>
 
-              {/* Inline Expanded Directory Area */}
+              {/* Inline Expanded Friends Book: History of last 5 friends added with corresponding date */}
               {showStatsDetail && (
-                <div className="border-t border-slate-100 flex flex-col w-full max-h-[250px] sm:max-h-[320px] bg-white animate-in fade-in slide-in-from-top-1 duration-150">
-                  <div className="overflow-y-auto flex-grow divide-y divide-slate-100/60 p-1">
-                    {contacts.length === 0 ? (
-                      <div className="py-8 px-4 text-center text-[11px] text-slate-400">
-                        {t.noFriendsRecorded}
-                      </div>
-                    ) : (
-                      Object.keys(contactCounts).map((paddedId) => {
-                        const country = COUNTRY_BY_ID[paddedId];
-                        const countryName = country?.name || `Country #${paddedId}`;
-                        const countryFlag = country?.flag || '🗺️';
-                        const countryFriends = contacts.filter(
-                          (c) => c.countryId.padStart(3, '0') === paddedId
-                        );
+                <div className="border-t border-slate-100 flex flex-col w-full max-h-[290px] sm:max-h-[350px] bg-white animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div className="px-3 py-1.5 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">
+                    <span className="flex items-center gap-1 text-slate-500">
+                      <Clock className="w-3 h-3 text-indigo-500" />
+                      <span>Last 5 Friends Added</span>
+                    </span>
+                    <span className="text-[8px] font-mono text-indigo-650 bg-indigo-50 px-1.5 py-0.5 rounded font-bold">
+                      History
+                    </span>
+                  </div>
 
-                        return {
-                          id: paddedId,
-                          name: countryName,
-                          flag: countryFlag,
-                          friends: countryFriends,
-                        };
-                      })
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((group) => (
-                        <div key={group.id} className="p-2 flex flex-col gap-1.5 hover:bg-slate-50/40 rounded-xl transition-colors">
-                          {/* Header trigger to select country on map */}
+                  <div className="overflow-y-auto flex-grow divide-y divide-slate-100/70 p-1">
+                    {(() => {
+                      const recentHistory = [...contacts]
+                        .sort((a, b) => {
+                          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                          return tB - tA; // newest first
+                        })
+                        .slice(0, 5);
+
+                      if (recentHistory.length === 0) {
+                        return (
+                          <div className="py-8 px-4 text-center text-[11px] text-slate-400 font-sans">
+                            {t.noFriendsRecorded}
+                          </div>
+                        );
+                      }
+
+                      return recentHistory.map((friend) => {
+                        const paddedId = friend.countryId.padStart(3, '0');
+                        const country = COUNTRY_BY_ID[paddedId];
+                        const countryName = country?.name || friend.countryName || `Country #${paddedId}`;
+                        const countryFlag = country?.flag || '🗺️';
+
+                        let formattedDate = '';
+                        if (friend.createdAt) {
+                          try {
+                            const d = new Date(friend.createdAt);
+                            if (!isNaN(d.getTime())) {
+                              formattedDate = d.toLocaleDateString(undefined, {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              });
+                            }
+                          } catch {
+                            formattedDate = '';
+                          }
+                        }
+
+                        return (
                           <button
+                            key={friend.id}
                             onClick={(e) => {
                               e.stopPropagation();
-                              onSelectCountry(group.id, group.name);
+                              onSelectCountry(paddedId, countryName);
+                              setFocusedCountryId(paddedId);
+                              if (geoData?.features) {
+                                const feat = geoData.features.find(
+                                  (f: any) => f?.id?.toString()?.padStart(3, '0') === paddedId
+                                );
+                                if (feat) centerOnCountry(feat);
+                              }
                             }}
-                            className="w-full text-left flex items-center justify-between text-xs font-semibold text-slate-800 hover:text-indigo-650 transition-colors group cursor-pointer"
+                            className="w-full text-left p-2 hover:bg-slate-50/80 rounded-xl transition-colors flex items-start gap-2.5 group cursor-pointer"
                           >
-                            <span className="flex items-center gap-1.5 truncate">
-                              <span className="text-base shrink-0 leading-none">{group.flag}</span>
-                              <span className="truncate group-hover:underline">{group.name}</span>
-                            </span>
-                            <span className="text-[9px] text-indigo-650 bg-indigo-50/70 py-0.5 px-1.5 font-bold rounded">
-                              {group.friends.length}
-                            </span>
-                          </button>
-
-                          {/* Compact list of individual connections for this country */}
-                          <div className="pl-5.5 flex flex-col gap-1">
-                            {group.friends.map((friend) => (
-                              <div 
-                                key={friend.id}
-                                className="bg-slate-50/40 border border-slate-100/50 p-1.5 rounded-lg flex flex-col gap-0.5"
-                              >
-                                <div className="flex items-center justify-between gap-1">
-                                  <span className="text-[10px] font-bold text-slate-705 truncate">
-                                    {friend.name}
-                                  </span>
+                            {/* Avatar or initial */}
+                            <div className="shrink-0 mt-0.5">
+                              {friend.photoUrl ? (
+                                <img
+                                  src={friend.photoUrl}
+                                  alt={friend.name}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedPhoto({ url: friend.photoUrl!, name: friend.name });
+                                  }}
+                                  className="w-7 h-7 rounded-full object-cover border border-slate-200 cursor-pointer hover:scale-110 active:scale-95 transition-all shadow-xs"
+                                  title="Click to view full photo"
+                                />
+                              ) : (
+                                <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 font-bold text-[10px] flex items-center justify-center border border-indigo-100">
+                                  {friend.name ? friend.name.charAt(0).toUpperCase() : '?'}
                                 </div>
-                                {friend.city && (
-                                  <span className="text-[9px] text-slate-400 font-normal">
-                                    📍 {friend.city}
-                                  </span>
-                                )}
-                                {friend.contactInfo && (
-                                  <span className="text-[8px] text-slate-400 font-mono tracking-tight pt-0.5 line-clamp-1 truncate">
-                                    ✉️ {friend.contactInfo}
+                              )}
+                            </div>
+
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-bold text-xs text-slate-800 truncate group-hover:text-indigo-650 transition-colors">
+                                  {friend.name}
+                                </span>
+                                {formattedDate && (
+                                  <span className="text-[9px] text-slate-400 font-medium shrink-0 font-sans bg-slate-100/70 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                    <Calendar className="w-2.5 h-2.5 text-slate-400 inline" />
+                                    <span>{formattedDate}</span>
                                   </span>
                                 )}
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))
-                    )}
+
+                              <div className="flex items-center gap-1.5 mt-0.5 text-[10.5px] text-slate-500 font-sans">
+                                <span className="text-xs select-none leading-none">{countryFlag}</span>
+                                <span className="font-medium text-slate-700 truncate">{countryName}</span>
+                                {friend.city && (
+                                  <>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="text-slate-400 truncate">📍 {friend.city}</span>
+                                  </>
+                                )}
+                              </div>
+
+                              {friend.contactInfo && (
+                                <div className="text-[8.5px] text-slate-400 font-mono truncate mt-0.5">
+                                  ✉️ {friend.contactInfo}
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
               )}
@@ -1132,16 +1331,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           )}
         </div>
       </div>
-
-      {/* Dynamic selection banner at bottom-right matching instructions */}
-      {selectedCountryId && (
-        <div className="absolute bottom-3 left-3 right-3 sm:left-auto sm:bottom-4 sm:right-4 bg-white p-3 py-2.5 sm:p-3.5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-2.5 animate-pulse z-10 max-w-[calc(100vw-24px)] text-xs font-semibold text-slate-800">
-          <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-indigo-600 rounded-full shrink-0 animate-ping"></div>
-          <div className="truncate">
-            {COUNTRY_BY_ID[selectedCountryId]?.flag} {COUNTRY_BY_ID[selectedCountryId]?.name || t.selectedText}: {contactCounts[selectedCountryId] || 0} {getFriendLabel(contactCounts[selectedCountryId] || 0)}
-          </div>
-        </div>
-      )}
 
       {/* Map Control Actions */}
       <div 
@@ -1197,6 +1386,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
               fill="#d4e5f7"
               onClick={() => {
                 onSelectCountry(null, '');
+                setFocusedCountryId(null);
                 setMobileHoveredId(null);
                 setHoveredCountry(null);
               }}
@@ -1244,7 +1434,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
               const isAntarctica = paddedId === '010';
               if (isAntarctica) return null;
 
-              const count = contactCounts[paddedId] || 0;
+              const count = (isLiveMode ? (liveContactCounts[paddedId] || 0) : (contactCounts[paddedId] || 0));
               const isSelected = selectedCountryId === paddedId;
               const isMobileHovered = mobileHoveredId === paddedId;
 
@@ -1253,12 +1443,12 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                   {/* Crisp flat country base path */}
                   <path
                     d={pathData}
-                    fill={getCountryColor(paddedId, count, isSelected)}
-                    stroke={isSelected ? '#4f46e5' : '#b2a897'}
+                    fill={getCountryColor(paddedId, count, isSelected, isLiveMode)}
+                    stroke={isSelected ? (isLiveMode ? '#059669' : '#4f46e5') : '#b2a897'}
                     strokeWidth={isSelected ? 1.8 / zoom : (isMobileHovered ? 2.8 / zoom : 0.55 / zoom)}
                     className="map-country select-none outline-none"
                     style={{
-                      fill: getCountryColor(paddedId, count, isSelected),
+                      fill: getCountryColor(paddedId, count, isSelected, isLiveMode),
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1271,14 +1461,82 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 </g>
               );
             })}
+
           </g>
         </svg>
       )}
 
-      {/* Custom Interactive Tooltip */}
-      {hoveredCountry && (
+      {/* Top Right Corner: 'Live' Mode Icon Button with Red Signal Icon (no text) */}
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        onMouseMove={(e) => e.stopPropagation()}
+        onMouseUp={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
+        className="absolute top-4 sm:top-6 right-4 sm:right-6 z-40 pointer-events-auto"
+      >
+        <button
+          onClick={handleToggleLiveMode}
+          className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center shadow-md border transition-all cursor-pointer active:scale-95 select-none ${
+            isLiveMode
+              ? 'bg-red-500 text-white border-red-600 shadow-red-500/30 ring-2 ring-red-400/40'
+              : 'bg-white/95 text-slate-400 hover:text-red-500 hover:border-red-200 border-slate-200/90 shadow-slate-200/50'
+          }`}
+          title={isLiveMode ? 'Live Mode Enabled (Click to disable)' : 'Enable Live Mode'}
+          aria-label="Toggle Live mode"
+        >
+          <Radio className={`w-5 h-5 transition-colors ${isLiveMode ? 'text-white' : 'text-red-500'}`} />
+        </button>
+      </div>
+
+      {/* Combined Unified Bottom Pop-up Card with Country Info, Amount of Friends and Open button */}
+      {focusedCountryId && !selectedCountryId && (
         <div
-          className="absolute rounded-xl px-2.5 py-1.5 bg-slate-900/95 text-white shadow-md text-xs flex flex-col gap-1 pointer-events-none z-30 font-sans border border-slate-800"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseMove={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 pointer-events-auto flex items-center gap-2.5 sm:gap-3 bg-white/95 backdrop-blur-md text-slate-800 px-3.5 py-2 sm:px-4.5 sm:py-2.5 rounded-2xl shadow-xl border border-slate-200/90 animate-in fade-in slide-in-from-bottom-2 duration-200 select-none max-w-[calc(100vw-32px)]"
+        >
+          <span className="text-xl sm:text-2xl select-none leading-none flex-shrink-0">
+            {getCountryInfo(focusedCountryId)?.flag || '🗺️'}
+          </span>
+          <div className="flex items-center gap-1.5 min-w-0 pr-1">
+            <span className="font-bold text-xs sm:text-sm text-slate-900 truncate leading-tight">
+              {getCountryInfo(focusedCountryId)?.name}
+            </span>
+            <span className="text-xs sm:text-sm font-semibold text-slate-500 shrink-0">
+              ({isLiveMode ? (liveContactCounts[focusedCountryId] || 0) : (contactCounts[focusedCountryId] || 0)})
+            </span>
+          </div>
+          <div className="h-6 w-[1px] bg-slate-200 flex-shrink-0" />
+          <button
+            onClick={() => onSelectCountry(focusedCountryId, getCountryInfo(focusedCountryId)?.name || '')}
+            className="text-xs sm:text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap flex-shrink-0"
+          >
+            Open
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setFocusedCountryId(null);
+              setMobileHoveredId(null);
+              setHoveredCountry(null);
+            }}
+            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors flex-shrink-0 cursor-pointer"
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Custom Interactive Tooltip (Desktop hover only when no country is clicked/focused) */}
+      {hoveredCountry && !focusedCountryId && !selectedCountryId && (
+        <div
+          className="absolute rounded-xl px-2.5 py-1.5 bg-slate-900/95 text-white shadow-md text-xs flex flex-col gap-1 pointer-events-none z-30 font-sans border border-slate-800 animate-in fade-in duration-100"
           style={{
             left: `${hoveredCountry.x}px`,
             top: `${hoveredCountry.y - 45}px`,
@@ -1292,7 +1550,11 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           <div className="flex items-center gap-1 text-[10px] text-slate-300 font-medium">
             <MapPin className="h-3 w-3 text-indigo-400" />
             <span>
-              {hoveredCountry.count} {getFriendLabel(hoveredCountry.count)}
+              {isLiveMode ? (
+                `${liveContactCounts[hoveredCountry.id] || 0} ${getFriendLabel(liveContactCounts[hoveredCountry.id] || 0)} live`
+              ) : (
+                `${hoveredCountry.count} ${getFriendLabel(hoveredCountry.count)}`
+              )}
             </span>
           </div>
         </div>
@@ -1305,6 +1567,14 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           onClick={() => setShowDropdown(false)}
         />
       )}
+
+      {/* Photo viewer modal for expanded friend pictures */}
+      <PhotoModal
+        isOpen={!!expandedPhoto}
+        photoUrl={expandedPhoto?.url || null}
+        friendName={expandedPhoto?.name}
+        onClose={() => setExpandedPhoto(null)}
+      />
     </div>
   );
 });

@@ -60,3 +60,27 @@
 .glow-animation {
   animation: glowHalo 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Flying paper airplane / message sent animation */
+@keyframes flyMessage {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(0.9) rotate(0deg);
+  }
+  35% {
+    opacity: 1;
+    transform: translate(12px, -18px) scale(1.15) rotate(-14deg);
+  }
+  75% {
+    opacity: 0.85;
+    transform: translate(28px, -36px) scale(0.9) rotate(-22deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(45px, -52px) scale(0.4) rotate(-30deg);
+  }
+}
+
+.animate-fly-message {
+  animation: flyMessage 0.95s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}

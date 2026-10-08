@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Contact } from './types';
 import WorldMap from './components/WorldMap';
 import CountryDetails from './components/CountryDetails';
@@ -6,52 +7,19 @@ import Loader from './components/Loader';
 import LoginView from './components/LoginView';
 import SettingsDrawer from './components/SettingsDrawer';
 import GuideTourModal from './components/GuideTourModal';
+import OnboardingModal from './components/OnboardingModal';
+import QRAddFriendModal from './components/QRAddFriendModal';
 import confetti from 'canvas-confetti';
-import { Globe, RefreshCw, Trash2, Heart, Download, Settings } from 'lucide-react';
+import { Globe, RefreshCw, Trash2, Heart, Download, Settings, Bell, MapPin, Navigation } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db, googleProvider, signInWithPopup, signOut, OperationType, handleFirestoreError } from './firebase';
 import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { AppLanguage, TRANSLATIONS } from './utils/translations';
-import { getCountryInfo } from './data/countries';
+import { getCountryInfo, COUNTRY_LIST } from './data/countries';
+import { safeStorage } from './utils/storage';
+import { playBubbleSound } from './utils/audio';
 
 const LOCAL_STORAGE_KEY = 'travel_contacts_map_journal';
-
-// Helper to compile elegant default demo contacts on first setup
-const DEFAULT_DEMO_CONTACTS: Contact[] = [
-  {
-    id: 'demo-yuki',
-    name: 'Yuki Tanaka',
-    countryId: '392', // Japan
-    countryName: 'Japan',
-    city: 'Kyoto',
-    contactInfo: '@yuki_travels',
-    photoUrl: undefined,
-    notes: 'Met during a tea ceremony in Kyoto! Incredible local guide who showed us hidden bamboo paths in Arashiyama.',
-    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days ago
-  },
-  {
-    id: 'demo-lucas',
-    name: 'Lucas Dubois',
-    countryId: '250', // France
-    countryName: 'France',
-    city: 'Paris',
-    contactInfo: 'lucas.d@email.com',
-    photoUrl: undefined,
-    notes: 'Landscape photographer. Met him at a small vintage cafe near Montmartre. Exchanged great tips for capturing golden hour photos around the Seine.',
-    createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString() // 15 days ago
-  },
-  {
-    id: 'demo-sophia',
-    name: 'Sophia Ramirez',
-    countryId: '840', // USA
-    countryName: 'United States',
-    city: 'Austin, TX',
-    contactInfo: '+1 512-555-0143',
-    photoUrl: undefined,
-    notes: 'Super funny road trip companion! Hosted me in Austin and made the absolute best street tacos under the stars.',
-    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() // 5 days ago
-  }
-];
 
 export default function App() {
   const mapRef = useRef<any>(null);
@@ -69,7 +37,7 @@ export default function App() {
   const [triggerGuideAfterLoad, setTriggerGuideAfterLoad] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [language, setLanguage] = useState<AppLanguage>(() => {
-    const saved = localStorage.getItem('gloko_app_language');
+    const saved = safeStorage.getItem('gloko_app_language');
     if (saved === 'en' || saved === 'es' || saved === 'fr' || saved === 'de' || saved === 'zh') {
       return saved as AppLanguage;
     }
@@ -84,9 +52,47 @@ export default function App() {
     isDestructive?: boolean;
   } | null>(null);
 
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showQRConnect, setShowQRConnect] = useState(false);
+  const [userHomeCountryId, setUserHomeCountryId] = useState<string>(() => {
+    return safeStorage.getItem('gloko_user_country_id') || '840';
+  });
+  const [geolocationEnabled, setGeolocationEnabled] = useState<boolean>(() => {
+    return safeStorage.getItem('gloko_geolocation_enabled') === 'true';
+  });
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const [notifications, setNotifications] = useState<Array<{ id: string; message: string; type: string; friendName?: string }>>([]);
+
+  // Play subtle bubble sound on every button interaction across the app
+  useEffect(() => {
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const button = target.closest('button, [role="button"]');
+      if (!button) return;
+      // Skip bubble sound if clicking the ping button (ping button has its own bell chime sound effect)
+      if (button.getAttribute('data-ping-button') === 'true') {
+        return;
+      }
+      playBubbleSound();
+    };
+
+    window.addEventListener('click', handleGlobalClick, { capture: true });
+    return () => {
+      window.removeEventListener('click', handleGlobalClick, { capture: true });
+    };
+  }, []);
+
+  // Prevent pop-up overlaps: clear focused country on map when any modal or drawer opens
+  useEffect(() => {
+    if (showSettingsDrawer || showGuideTour || showQRConnect || selectedCountryId) {
+      mapRef.current?.clearFocusedCountry?.();
+    }
+  }, [showSettingsDrawer, showGuideTour, showQRConnect, selectedCountryId]);
+
   const handleLanguageChange = (lang: AppLanguage) => {
     setShowSettingsDrawer(false);
-    localStorage.setItem('gloko_app_language', lang);
+    safeStorage.setItem('gloko_app_language', lang);
     setLanguage(lang);
     if (user) {
       setHasLoaded(false);
@@ -112,6 +118,121 @@ export default function App() {
       setTriggerGuideAfterLoad(false);
     }
   }, [hasLoaded, isMapLoaded, triggerGuideAfterLoad]);
+
+  // Toast Notification helper
+  const showNotification = (message: string, type: 'info' | 'success' | 'ping' = 'info', friendName?: string) => {
+    const id = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    setNotifications(prev => [...prev, { id, message, type, friendName }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 4500);
+  };
+
+  // Onboarding first-time connection check
+  useEffect(() => {
+    if (hasLoaded && isMapLoaded && user) {
+      const completed = safeStorage.getItem('gloko_onboarding_completed');
+      if (completed !== 'true') {
+        setShowOnboarding(true);
+      }
+    }
+  }, [hasLoaded, isMapLoaded, user]);
+
+  // Listen to live system pings from other users (authenticated mode only)
+  useEffect(() => {
+    if (!user) return;
+    const pingsQuery = query(collection(db, 'pings'), where('status', '==', 'unread'));
+    const unsubscribe = onSnapshot(pingsQuery, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          if (data && data.fromUserId !== user.uid) {
+            showNotification(`🌐 ${data.fromUserName} sent a travel Ping to ${data.toContactName}!`, 'info');
+          }
+        }
+      });
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'pings');
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  // Finish onboarding handler
+  const handleOnboardingComplete = async (countryId: string, enableGeolocation: boolean) => {
+    safeStorage.setItem('gloko_onboarding_completed', 'true');
+    safeStorage.setItem('gloko_user_country_id', countryId);
+    safeStorage.setItem('gloko_geolocation_enabled', String(enableGeolocation));
+    setUserHomeCountryId(countryId);
+    setGeolocationEnabled(enableGeolocation);
+    setShowOnboarding(false);
+
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'settings', 'profile'), {
+          homeCountryId: countryId,
+          geolocationEnabled: enableGeolocation,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}/settings/profile`);
+      }
+    }
+
+    const country = COUNTRY_LIST.find(c => c.id === countryId);
+    if (country) {
+      showNotification(`📍 Home country set to ${country.flag} ${country.name}!`, 'success');
+    }
+  };
+
+  // Ping a friend handler
+  const handlePingFriend = async (contact: Contact) => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+      gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.4);
+    } catch (e) {
+      // Audio autoplay restrictions or unsupported
+    }
+
+    if (user) {
+      const pingId = `ping-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      try {
+        await setDoc(doc(db, 'pings', pingId), {
+          id: pingId,
+          fromUserId: user.uid,
+          fromUserName: user.displayName || user.email?.split('@')[0] || "A Gloko Friend",
+          toContactName: contact.name,
+          toContactId: contact.id,
+          createdAt: new Date().toISOString(),
+          status: 'unread'
+        });
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, `pings/${pingId}`);
+      }
+    }
+  };
+
+  // Add friend from QR scan handler
+  const handleAddFriendFromQR = async (friendData: { name: string; countryId: string; city: string; contact: string; notes: string }) => {
+    const country = COUNTRY_LIST.find(c => c.id === friendData.countryId);
+    await handleAddContact({
+      name: friendData.name,
+      countryId: friendData.countryId,
+      countryName: country?.name || 'Unknown',
+      city: friendData.city,
+      contactInfo: friendData.contact,
+      notes: friendData.notes,
+    });
+    showNotification(`💖 Successfully added ${friendData.name} as a friend!`, 'success');
+  };
 
   // Listen to keyboard dismissal & text input blur on mobile to reset viewport scale to 1.0 (reverses auto-zoom)
   useEffect(() => {
@@ -173,20 +294,17 @@ export default function App() {
     if (!user) {
       // Unauthenticated Mode (Local sandbox)
       try {
-        const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+        const stored = safeStorage.getItem(LOCAL_STORAGE_KEY);
         if (stored) {
-          setContacts(JSON.parse(stored));
+          const parsed = JSON.parse(stored);
+          const nonDemo = Array.isArray(parsed) ? parsed.filter((c: any) => !c.id?.startsWith('demo-')) : [];
+          setContacts(nonDemo);
         } else {
-          if (localStorage.getItem('gloko_no_demo') === 'true') {
-            setContacts([]);
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
-          } else {
-            setContacts(DEFAULT_DEMO_CONTACTS);
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(DEFAULT_DEMO_CONTACTS));
-          }
+          setContacts([]);
+          safeStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
         }
 
-        const storedColors = localStorage.getItem('travel_contacts_map_country_colors');
+        const storedColors = safeStorage.getItem('travel_contacts_map_country_colors');
         if (storedColors) {
           setCountryColors(JSON.parse(storedColors));
         } else {
@@ -194,7 +312,7 @@ export default function App() {
         }
       } catch (e) {
         console.error('Error loading startup state from localStorage:', e);
-        setContacts(DEFAULT_DEMO_CONTACTS);
+        setContacts([]);
       } finally {
         setHasLoaded(true);
       }
@@ -209,33 +327,14 @@ export default function App() {
     const unsubscribeContacts = onSnapshot(contactsQuery, async (snapshot) => {
       const fetchedContacts: Contact[] = [];
       snapshot.forEach((docSnap) => {
-        fetchedContacts.push(docSnap.data() as Contact);
+        const data = docSnap.data() as Contact;
+        if (!data.id?.startsWith('demo-')) {
+          fetchedContacts.push(data);
+        }
       });
 
-      // Boostrap zero-state user profiles automatically with demo items
-      if (fetchedContacts.length === 0) {
-        if (localStorage.getItem('gloko_no_demo') === 'true' || localStorage.getItem(`gloko_no_demo_${user.uid}`) === 'true') {
-          setContacts([]);
-          setHasLoaded(true);
-          return;
-        }
-        try {
-          for (const demoContact of DEFAULT_DEMO_CONTACTS) {
-            const cloudContact = { 
-              ...demoContact, 
-              id: `${demoContact.id}-${user.uid.substring(0, 5)}`,
-              userId: user.uid 
-            };
-            const cleanCloudContact = JSON.parse(JSON.stringify(cloudContact));
-            await setDoc(doc(db, 'contacts', cloudContact.id), cleanCloudContact);
-          }
-        } catch (e) {
-          console.error("Error setting up initial demo data under user account:", e);
-        }
-      } else {
-        // Sort contacts by date downloaded/saved
-        setContacts(fetchedContacts.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-      }
+      // No sample data for fresh new accounts
+      setContacts(fetchedContacts.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
       setHasLoaded(true);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'contacts');
@@ -256,9 +355,28 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, `users/${user.uid}/colors`);
     });
 
+    // Subscribe to user onboarding settings/profile
+    const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'profile');
+    const unsubscribeSettings = onSnapshot(settingsDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.homeCountryId) {
+          setUserHomeCountryId(data.homeCountryId);
+          safeStorage.setItem('gloko_user_country_id', data.homeCountryId);
+        }
+        if (data.geolocationEnabled !== undefined) {
+          setGeolocationEnabled(data.geolocationEnabled);
+          safeStorage.setItem('gloko_geolocation_enabled', String(data.geolocationEnabled));
+        }
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}/settings/profile`);
+    });
+
     return () => {
       unsubscribeContacts();
       unsubscribeColors();
+      unsubscribeSettings();
     };
   }, [user, isAuthLoading]);
 
@@ -288,9 +406,9 @@ export default function App() {
   const saveAndSyncContacts = (updated: Contact[]) => {
     setContacts(updated);
     try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+      safeStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {
-      console.error('Failed to write to localStorage:', e);
+      console.error('Failed to write to safeStorage:', e);
     }
   };
 
@@ -310,7 +428,7 @@ export default function App() {
       const updatedColors = { ...countryColors, [countryId]: color };
       setCountryColors(updatedColors);
       try {
-        localStorage.setItem('travel_contacts_map_country_colors', JSON.stringify(updatedColors));
+        safeStorage.setItem('travel_contacts_map_country_colors', JSON.stringify(updatedColors));
       } catch (e) {
         console.error('Failed to write country colors details:', e);
       }
@@ -411,7 +529,7 @@ export default function App() {
               delete updatedColors[countryId];
               setCountryColors(updatedColors);
               try {
-                localStorage.setItem('travel_contacts_map_country_colors', JSON.stringify(updatedColors));
+                safeStorage.setItem('travel_contacts_map_country_colors', JSON.stringify(updatedColors));
               } catch (e) {
                 console.error('Failed to save updated colors after filter:', e);
               }
@@ -494,9 +612,9 @@ export default function App() {
       isDestructive: true,
       onConfirm: async () => {
         // Set no demo flags to completely clear example inputs
-        localStorage.setItem('gloko_no_demo', 'true');
+        safeStorage.setItem('gloko_no_demo', 'true');
         if (user) {
-          localStorage.setItem(`gloko_no_demo_${user.uid}`, 'true');
+          safeStorage.setItem(`gloko_no_demo_${user.uid}`, 'true');
           try {
             // 1. Fetch current contacts
             const q = query(collection(db, 'contacts'), where('userId', '==', user.uid));
@@ -520,7 +638,7 @@ export default function App() {
         } else {
           saveAndSyncContacts([]);
           setCountryColors({});
-          localStorage.removeItem('travel_contacts_map_country_colors');
+          safeStorage.removeItem('travel_contacts_map_country_colors');
           setSelectedCountryId(null);
         }
 
@@ -537,8 +655,26 @@ export default function App() {
     });
   };
 
+  // Helper to resolve a contact's display country in fixed mode
+  const getDisplayCountryId = (contact: Contact): string => {
+    if (contact.homeCountryId) {
+      return contact.homeCountryId;
+    }
+    return contact.countryId;
+  };
+
+  const displayedContacts = contacts.map(c => ({
+    ...c,
+    countryId: getDisplayCountryId(c),
+    city: c.city,
+  }));
+
   // Set of unique countries visited for metrics display
-  const visitedCount = new Set(contacts.map((c) => c.countryId.padStart(3, '0'))).size;
+  const visitedCount = new Set(
+    displayedContacts
+      .filter((c) => c.countryId)
+      .map((c) => c.countryId.padStart(3, '0'))
+  ).size;
 
   if (isAuthLoading) {
     return <Loader />;
@@ -562,11 +698,15 @@ export default function App() {
       <div className={`absolute inset-0 w-full h-full z-0 ${selectedCountryId ? 'pointer-events-none' : ''}`}>
         <WorldMap
           ref={mapRef}
-          contacts={contacts}
+          contacts={displayedContacts}
           selectedCountryId={selectedCountryId}
           onSelectCountry={handleSelectCountry}
           countryColors={countryColors}
           onMapLoaded={() => setIsMapLoaded(true)}
+          userHomeCountryId={userHomeCountryId}
+          userGeolocationEnabled={geolocationEnabled}
+          isLiveMode={isLiveMode}
+          onToggleLiveMode={() => setIsLiveMode((prev) => !prev)}
           onLogoClick={() => {
             // Trigger immersive loading screen transition before centering
             setHasLoaded(false);
@@ -609,6 +749,9 @@ export default function App() {
         language={language}
         onLanguageChange={handleLanguageChange}
         onShowGuide={() => setShowGuideTour(true)}
+        onOpenQRConnect={() => setShowQRConnect(true)}
+        userHomeCountryId={userHomeCountryId}
+        geolocationEnabled={geolocationEnabled}
       />
 
       {/* Interactive Guide Tour Slides Deck Walkthrough Modal */}
@@ -632,10 +775,12 @@ export default function App() {
             <CountryDetails
               countryId={selectedCountryId}
               countryName={getCountryInfo(selectedCountryId)?.name || selectedCountryName}
-              contacts={contacts}
+              contacts={displayedContacts}
+              isLiveMode={isLiveMode}
               onAddContact={handleAddContact}
               onUpdateContact={handleUpdateContact}
               onDeleteContact={handleDeleteContact}
+              onPing={handlePingFriend}
               onBack={() => handleSelectCountry(null, '')}
               currentColor={countryColors[selectedCountryId]}
               onColorChange={(color) => handleSaveCountryColor(selectedCountryId, color)}
@@ -715,6 +860,49 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Onboarding Setup Modal Popup upon First Connection */}
+      <AnimatePresence>
+        {showOnboarding && (
+          <OnboardingModal
+            isOpen={showOnboarding}
+            onComplete={handleOnboardingComplete}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* QR Code Connect Friend Modal Popup */}
+      <AnimatePresence>
+        {showQRConnect && (
+          <QRAddFriendModal
+            isOpen={showQRConnect}
+            onClose={() => setShowQRConnect(false)}
+            currentUser={user}
+            homeCountryId={userHomeCountryId}
+            onAddFriendFromQR={handleAddFriendFromQR}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Floating System Notifications and Pings Toaster */}
+      <div className="fixed top-18 sm:top-20 right-4 z-[110] flex flex-col gap-2.5 max-w-xs w-full pointer-events-none">
+        <AnimatePresence>
+          {notifications.map((notif) => (
+            <motion.div
+              key={notif.id}
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
+              className="pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white px-4 py-3.5 rounded-2xl shadow-xl border border-slate-750/50 flex items-start gap-3 w-full"
+            >
+              <div className="h-2 w-2 rounded-full bg-indigo-400 shrink-0 animate-pulse mt-1.5" />
+              <div className="flex-1 text-xs font-medium font-sans leading-relaxed text-slate-100">
+                {notif.message}
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
 
     </div>
   );

@@ -1,9 +1,10 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Download, Trash2, LogOut, Settings, ShieldAlert, Globe, ArrowRight, Sparkles } from 'lucide-react';
+import { X, Download, Trash2, LogOut, Settings, ShieldAlert, Globe, ArrowRight, Sparkles, QrCode } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { Contact } from '../types';
 import { AppLanguage, TRANSLATIONS } from '../utils/translations';
+import { getCountryInfo } from '../data/countries';
 
 interface SettingsDrawerProps {
   isOpen: boolean;
@@ -18,6 +19,9 @@ interface SettingsDrawerProps {
   language: AppLanguage;
   onLanguageChange: (lang: AppLanguage) => void;
   onShowGuide: () => void;
+  onOpenQRConnect: () => void;
+  userHomeCountryId?: string;
+  geolocationEnabled?: boolean;
 }
 
 export default function SettingsDrawer({
@@ -33,6 +37,9 @@ export default function SettingsDrawer({
   language,
   onLanguageChange,
   onShowGuide,
+  onOpenQRConnect,
+  userHomeCountryId,
+  geolocationEnabled,
 }: SettingsDrawerProps) {
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
 
@@ -132,6 +139,36 @@ export default function SettingsDrawer({
                       </span>
                     </div>
 
+                    {/* Onboarding / Profile Preferences */}
+                    <div className="border-t border-slate-100 pt-3 space-y-2 text-xs font-medium text-slate-500">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+                          <Globe className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Home Region:</span>
+                        </span>
+                        {(() => {
+                          const info = userHomeCountryId ? getCountryInfo(userHomeCountryId) : undefined;
+                          return (
+                            <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg text-[10.5px]">
+                              {info ? `${info.flag} ${info.name}` : 'Not Set'}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+                          <span className="relative flex h-2 w-2 shrink-0">
+                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${geolocationEnabled ? 'bg-emerald-400' : 'bg-slate-300'}`}></span>
+                            <span className={`relative inline-flex rounded-full h-2 w-2 ${geolocationEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                          </span>
+                          <span>GPS Geolocation:</span>
+                        </span>
+                        <span className={`font-bold text-[10.5px] px-2 py-0.5 rounded-lg ${geolocationEnabled ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-slate-100'}`}>
+                          {geolocationEnabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </div>
+                    </div>
+
                     {/* Logout Trigger Button (No harsh black backgrounds) */}
                     <button
                       onClick={() => {
@@ -164,6 +201,39 @@ export default function SettingsDrawer({
                     </button>
                   </div>
                 )}
+              </div>
+
+              {/* QR Code Friend Connect Section */}
+              <div className="space-y-3">
+                <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none">
+                  Friends Network
+                </h3>
+                <div className="bg-indigo-50/20 border border-indigo-100/50 rounded-2xl p-4 space-y-3 hover:border-indigo-200 transition-colors">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-xl shrink-0">
+                      <QrCode className="w-4.5 h-4.5 stroke-[2]" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900">
+                        QR Friend Connect
+                      </h4>
+                      <p className="text-[10px] text-slate-400 font-semibold leading-relaxed mt-0.5">
+                        Scan another traveler's code or display your profile to connect on the map.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      onOpenQRConnect();
+                      onClose();
+                    }}
+                    className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white tracking-tight py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-xs hover:shadow-sm cursor-pointer active:scale-95"
+                  >
+                    <QrCode className="w-3.5 h-3.5 stroke-[2.2]" />
+                    <span>Scan / Share QR Code</span>
+                  </button>
+                </div>
               </div>
 
               {/* How it Works Section */}

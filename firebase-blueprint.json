@@ -28,6 +28,32 @@
         "color": { "type": "string" }
       },
       "required": ["userId", "countryId", "color"]
+    },
+    "UserProfileSettings": {
+      "title": "UserProfileSettings",
+      "description": "User profile settings including home country and geolocation sharing preferences",
+      "type": "object",
+      "properties": {
+        "homeCountryId": { "type": "string" },
+        "geolocationEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["homeCountryId", "geolocationEnabled", "updatedAt"]
+    },
+    "Ping": {
+      "title": "Ping",
+      "description": "A live ping sent between friends to signal travel updates or greetings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fromUserId": { "type": "string" },
+        "fromUserName": { "type": "string" },
+        "toContactName": { "type": "string" },
+        "toContactId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["unread", "read"] }
+      },
+      "required": ["id", "fromUserId", "fromUserName", "toContactName", "toContactId", "createdAt", "status"]
     }
   },
   "firestore": {
@@ -38,6 +64,14 @@
     "/users/{userId}/colors/{countryId}": {
       "schema": "CountryColor",
       "description": "Store user custom country colors"
+    },
+    "/users/{userId}/settings/{settingsId}": {
+      "schema": "UserProfileSettings",
+      "description": "Store user specific settings and travel profile config"
+    },
+    "/pings/{pingId}": {
+      "schema": "Ping",
+      "description": "Store live pings between users and friends"
     }
   }
 }

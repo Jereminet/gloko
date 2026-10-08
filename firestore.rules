@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Global Safety Net
+    // Global Safety Net (Pillar 1)
     match /{document=**} {
       allow read, write: if false;
     }
@@ -20,7 +20,7 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Helper functions for validating payloads (Phase 4)
+    // Helper functions for validating payloads (Phase 4 / Pillar 2)
     function isValidContact(data) {
       return data.keys().hasAll(['id', 'userId', 'name', 'countryId', 'countryName', 'createdAt'])
           && data.keys().size() <= 10
@@ -44,11 +44,31 @@ service cloud.firestore {
           && data.color is string && data.color.size() <= 50;
     }
 
+    function isValidUserProfileSettings(data) {
+      return data.keys().hasAll(['homeCountryId', 'geolocationEnabled', 'updatedAt'])
+          && data.keys().size() == 3
+          && data.homeCountryId is string && data.homeCountryId.size() <= 10
+          && data.geolocationEnabled is bool
+          && data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    function isValidPing(data) {
+      return data.keys().hasAll(['id', 'fromUserId', 'fromUserName', 'toContactName', 'toContactId', 'createdAt', 'status'])
+          && data.keys().size() == 7
+          && data.id is string && data.id.size() <= 128
+          && data.fromUserId is string && data.fromUserId == request.auth.uid
+          && data.fromUserName is string && data.fromUserName.size() <= 100
+          && data.toContactName is string && data.toContactName.size() <= 100
+          && data.toContactId is string && data.toContactId.size() <= 128
+          && data.createdAt is string && data.createdAt.size() <= 100
+          && data.status is string && (data.status == 'unread' || data.status == 'read');
+    }
+
     // Contacts collection rules
     match /contacts/{contactId} {
       allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
       
-      // Multi-User relational separation: list queries must filter by user ID (Pillar 8)
+      // Multi-User relational separation (Pillar 8)
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
       
       allow create: if isUserVerified() && isValidId(contactId) && isValidContact(request.resource.data);
@@ -56,17 +76,39 @@ service cloud.firestore {
       allow update: if isUserVerified() && isValidId(contactId) && isValidContact(request.resource.data) 
                     && resource.data.userId == request.auth.uid
                     && request.resource.data.userId == request.auth.uid;
-                    
+                     
       allow delete: if isUserVerified() && resource.data.userId == request.auth.uid;
     }
 
-    // User subcollection rules for Country Colors
+    // User colors subcollection rules
     match /users/{userId}/colors/{countryId} {
       allow read: if isSignedIn() && userId == request.auth.uid;
       
       allow create, update: if isUserVerified() && userId == request.auth.uid && isValidId(countryId) && isValidCountryColor(request.resource.data);
       
       allow delete: if isUserVerified() && userId == request.auth.uid;
+    }
+
+    // User settings subcollection rules (Resolves error 0)
+    match /users/{userId}/settings/{settingsId} {
+      allow read: if isSignedIn() && userId == request.auth.uid;
+      
+      allow create, update: if isUserVerified() && userId == request.auth.uid && isValidId(settingsId) && isValidUserProfileSettings(request.resource.data);
+      
+      allow delete: if isUserVerified() && userId == request.auth.uid;
+    }
+
+    // Global pings collection rules (Resolves error 1)
+    match /pings/{pingId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && resource.data.status == 'unread';
+      
+      allow create: if isUserVerified() && isValidId(pingId) && isValidPing(request.resource.data);
+      
+      allow update: if isUserVerified() && isValidId(pingId) && isValidPing(request.resource.data)
+                    && (resource.data.fromUserId == request.auth.uid || resource.data.toContactId == request.auth.uid);
+                    
+      allow delete: if false;
     }
   }
 }

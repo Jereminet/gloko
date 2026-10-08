@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { Contact } from '../types';
 import { getCountryInfo } from '../data/countries';
 import ContactCard from './ContactCard';
 import ContactForm from './ContactForm';
-import { UserPlus, X, Globe, MapPin, Palette, Search, SlidersHorizontal } from 'lucide-react';
+import { UserPlus, X, Globe, MapPin, Palette, Search, SlidersHorizontal, Radio } from 'lucide-react';
 import { getTranslation, getAppLanguage } from '../utils/translations';
 
 interface CountryDetailsProps {
@@ -14,9 +14,11 @@ interface CountryDetailsProps {
   onAddContact: (contactData: Omit<Contact, 'id' | 'createdAt'>) => Promise<string>;
   onUpdateContact: (contactData: Contact) => void;
   onDeleteContact: (id: string) => void;
+  onPing?: (contact: Contact) => void;
   onBack: () => void;
   currentColor?: string;
   onColorChange?: (color: string) => void;
+  isLiveMode?: boolean;
 }
 
 export default function CountryDetails({
@@ -26,9 +28,11 @@ export default function CountryDetails({
   onAddContact,
   onUpdateContact,
   onDeleteContact,
+  onPing,
   onBack,
   currentColor = '',
   onColorChange,
+  isLiveMode = false,
 }: CountryDetailsProps) {
   const t = getTranslation();
 
@@ -67,9 +71,16 @@ export default function CountryDetails({
   const countryInfo = getCountryInfo(countryId);
 
   // Filter contacts by specific active country (support padded variations)
-  const countryContacts = contacts.filter(
-    (c) => c.countryId === countryId || c.countryId.padStart(3, '0') === countryId.padStart(3, '0')
-  );
+  // In live mode, only show friends that are currently live in this country
+  const countryContacts = contacts.filter((c) => {
+    if (isLiveMode) {
+      if (!c.geolocationEnabled) return false;
+      const target = c.liveCountryId || c.countryId;
+      if (!target) return false;
+      return target === countryId || target.padStart(3, '0') === countryId.padStart(3, '0');
+    }
+    return c.countryId === countryId || c.countryId.padStart(3, '0') === countryId.padStart(3, '0');
+  });
 
   // Filter and sort contacts based on user preferences in country details
   const filteredContacts = countryContacts.filter((c) => {
@@ -148,9 +159,18 @@ export default function CountryDetails({
   };
 
   const handleAddNewClick = () => {
+    // Adding friends is disabled in live mode
+    if (isLiveMode) return;
     setEditingContact(null);
     setIsFormOpen(true);
   };
+
+  // Close creation form if live mode becomes active
+  useEffect(() => {
+    if (isLiveMode && isFormOpen && !editingContact) {
+      setIsFormOpen(false);
+    }
+  }, [isLiveMode, isFormOpen, editingContact]);
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden min-h-[400px] text-slate-800">
@@ -164,10 +184,21 @@ export default function CountryDetails({
                   <span className="text-xl leading-none select-none">{countryInfo?.flag || '🗺️'}</span>
                   <h3 className="font-bold text-slate-800 text-sm tracking-tight">{countryName}</h3>
                   
+                  {isLiveMode && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600 border border-red-200/80 px-1.5 py-0.5 rounded-full select-none">
+                      Live
+                    </span>
+                  )}
+
                   {/* Small Customizable Color Button Next to name - Only available if friends exist in country */}
-                  {countryContacts.length > 0 && (
+                  {countryContacts.length > 0 && !isLiveMode && (
                     <button
-                      onClick={() => setShowColorPicker(!showColorPicker)}
+                      onClick={() => {
+                        setShowColorPicker((prev) => {
+                          if (!prev) setIsSortMenuOpen(false);
+                          return !prev;
+                        });
+                      }}
                       className="p-1 hover:bg-slate-200/60 text-slate-500 rounded-md transition-all flex items-center justify-center cursor-pointer"
                       title="Choose map display color"
                     >
@@ -253,16 +284,18 @@ export default function CountryDetails({
 
           {/* List and Cards Body */}
           <div className="flex-1 overflow-y-auto overscroll-contain p-4 flex flex-col gap-4">
-            {/* Big Prominent Central "Add Friend" Button & Local Friend Search Bar */}
+            {/* Prominent "Add Friend" Button (hidden in live mode) & Local Friend Search Bar */}
             {countryContacts.length > 0 && (
               <div className="flex flex-col gap-2.5 pb-3 border-b border-slate-100/60">
-                <button
-                  onClick={handleAddNewClick}
-                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all transform hover:-translate-y-0.2 cursor-pointer"
-                >
-                  <UserPlus className="h-4 w-4" />
-                  <span>{getAddFriendLabel()}</span>
-                </button>
+                {!isLiveMode && (
+                  <button
+                    onClick={handleAddNewClick}
+                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all transform hover:-translate-y-0.2 cursor-pointer"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    <span>{getAddFriendLabel()}</span>
+                  </button>
+                )}
 
                 {/* Micro Input Box to find a friend in active country */}
                 <div className="relative">
@@ -301,7 +334,12 @@ export default function CountryDetails({
                   {/* Filter logo button & dropdown menu */}
                   <div className="relative shrink-0 select-none">
                     <button
-                      onClick={() => setIsSortMenuOpen(!isSortMenuOpen)}
+                      onClick={() => {
+                        setIsSortMenuOpen((prev) => {
+                          if (!prev) setShowColorPicker(false);
+                          return !prev;
+                        });
+                      }}
                       className={`p-1 hover:bg-slate-100 rounded-md transition-all flex items-center gap-1 cursor-pointer normal-case font-semibold text-[10px] ${
                         isSortMenuOpen ? 'text-indigo-650 bg-slate-100/80' : 'text-slate-400 hover:text-slate-600'
                       }`}
@@ -397,6 +435,7 @@ export default function CountryDetails({
                       contact={contact}
                       onEdit={handleEditClick}
                       onDelete={onDeleteContact}
+                      onPing={onPing}
                       shouldShake={shakeFriendId === contact.id}
                     />
                   ))
@@ -408,20 +447,29 @@ export default function CountryDetails({
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center p-6 text-center py-12">
-                {/* Clean inline SVG design representing travel note taking */}
-                <div className="p-4 bg-indigo-50 text-indigo-500 rounded-2xl mb-4">
-                  <Globe className="h-8 w-8 animate-pulse" />
+                {/* Clean inline SVG design */}
+                <div className={`p-4 rounded-2xl mb-4 ${isLiveMode ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-500'}`}>
+                  {isLiveMode ? <Radio className="h-8 w-8 animate-pulse text-red-500" /> : <Globe className="h-8 w-8 animate-pulse" />}
                 </div>
-                <h4 className="font-sans font-semibold text-slate-705 text-sm">{getNoFriendsInCountryHeader()}</h4>
+                <h4 className="font-sans font-semibold text-slate-700 text-sm">
+                  {isLiveMode ? 'No friends currently sharing live location here' : getNoFriendsInCountryHeader()}
+                </h4>
+                {isLiveMode && (
+                  <p className="text-xs text-slate-400 mt-1 max-w-xs font-sans">
+                    Friends will appear here as soon as they enable their live location in this country.
+                  </p>
+                )}
                 
-                {/* Bigger, Center Add Friend Button */}
-                <button
-                  onClick={handleAddNewClick}
-                  className="mt-6 w-full max-w-xs py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all transform hover:-translate-y-0.2 cursor-pointer"
-                >
-                  <UserPlus className="h-4 w-4" />
-                  <span>{getAddFriendLabel()}</span>
-                </button>
+                {/* Center Add Friend Button (only when not in live mode) */}
+                {!isLiveMode && (
+                  <button
+                    onClick={handleAddNewClick}
+                    className="mt-6 w-full max-w-xs py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all transform hover:-translate-y-0.2 cursor-pointer"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    <span>{getAddFriendLabel()}</span>
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -4,6 +4,7 @@ import { es } from './es';
 import { fr } from './fr';
 import { de } from './de';
 import { zh } from './zh';
+import { safeStorage } from '../utils/storage';
 
 export * from './types';
 
@@ -17,7 +18,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationSet> = {
 
 export function getAppLanguage(): AppLanguage {
   if (typeof window === 'undefined') return 'en';
-  const saved = localStorage.getItem('gloko_app_language');
+  const saved = safeStorage.getItem('gloko_app_language');
   if (saved === 'en' || saved === 'es' || saved === 'fr' || saved === 'de' || saved === 'zh') {
     return saved as AppLanguage;
   }

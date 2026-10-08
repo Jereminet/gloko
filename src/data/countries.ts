@@ -358,9 +358,10 @@ const COUNTRY_NAME_TRANSLATIONS: Record<string, Record<string, string>> = {
   "Zimbabwe": { es: "Zimbabue", fr: "Zimbabwe", de: "Simbabwe", zh: "津巴布韦" }
 };
 
+import { safeStorage } from '../utils/storage';
+
 export function getAppLanguage(): string {
-  if (typeof localStorage === 'undefined') return 'en';
-  const saved = localStorage.getItem('gloko_app_language');
+  const saved = safeStorage.getItem('gloko_app_language');
   if (saved === 'en' || saved === 'es' || saved === 'fr' || saved === 'de' || saved === 'zh') {
     return saved;
   }
