@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Download, Trash2, LogOut, Settings, ShieldAlert, Globe, ArrowRight, Sparkles, QrCode } from 'lucide-react';
+import { X, Download, Trash2, LogOut, Settings, ShieldAlert, Globe, ArrowRight, Sparkles, QrCode, UserPlus, UserMinus } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { Contact } from '../types';
 import { AppLanguage, TRANSLATIONS } from '../utils/translations';
@@ -20,6 +20,8 @@ interface SettingsDrawerProps {
   onLanguageChange: (lang: AppLanguage) => void;
   onShowGuide: () => void;
   onOpenQRConnect: () => void;
+  onSimulateIncomingAdd?: () => void;
+  onSimulateIncomingDelete?: () => void;
   userHomeCountryId?: string;
   geolocationEnabled?: boolean;
 }
@@ -38,6 +40,8 @@ export default function SettingsDrawer({
   onLanguageChange,
   onShowGuide,
   onOpenQRConnect,
+  onSimulateIncomingAdd,
+  onSimulateIncomingDelete,
   userHomeCountryId,
   geolocationEnabled,
 }: SettingsDrawerProps) {
@@ -233,6 +237,38 @@ export default function SettingsDrawer({
                     <QrCode className="w-3.5 h-3.5 stroke-[2.2]" />
                     <span>Scan / Share QR Code</span>
                   </button>
+
+                  {/* Mutual Friend Testing Triggers */}
+                  <div className="pt-2 border-t border-indigo-100/40 flex flex-col gap-1.5">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                      Simulate Incoming Network Activity
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={() => {
+                          onSimulateIncomingAdd?.();
+                          onClose();
+                        }}
+                        className="py-1.5 px-2 bg-white hover:bg-indigo-50/60 border border-slate-200 text-slate-700 hover:text-indigo-600 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+                        title="Simulate someone adding you as a friend to test add-back popup"
+                      >
+                        <UserPlus className="w-3 h-3 text-indigo-500 shrink-0" />
+                        <span>Simulate Add</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          onSimulateIncomingDelete?.();
+                          onClose();
+                        }}
+                        className="py-1.5 px-2 bg-white hover:bg-red-50/60 border border-slate-200 text-slate-700 hover:text-red-600 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+                        title="Simulate someone removing you to test friend deletion popup"
+                      >
+                        <UserMinus className="w-3 h-3 text-red-500 shrink-0" />
+                        <span>Simulate Delete</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 

@@ -9,6 +9,7 @@ import SettingsDrawer from './components/SettingsDrawer';
 import GuideTourModal from './components/GuideTourModal';
 import OnboardingModal from './components/OnboardingModal';
 import QRAddFriendModal from './components/QRAddFriendModal';
+import FriendActivityModal, { FriendActivityInfo } from './components/FriendActivityModal';
 import confetti from 'canvas-confetti';
 import { Globe, RefreshCw, Trash2, Heart, Download, Settings, Bell, MapPin, Navigation } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -17,7 +18,7 @@ import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDocs }
 import { AppLanguage, TRANSLATIONS } from './utils/translations';
 import { getCountryInfo, COUNTRY_LIST } from './data/countries';
 import { safeStorage } from './utils/storage';
-import { playBubbleSound } from './utils/audio';
+import { playBubbleSound, playMinimizeSound } from './utils/audio';
 
 const LOCAL_STORAGE_KEY = 'travel_contacts_map_journal';
 
@@ -62,12 +63,22 @@ export default function App() {
   });
   const [isLiveMode, setIsLiveMode] = useState(false);
   const [notifications, setNotifications] = useState<Array<{ id: string; message: string; type: string; friendName?: string }>>([]);
+  const [pendingFriendActivity, setPendingFriendActivity] = useState<FriendActivityInfo | null>(null);
 
-  // Play subtle bubble sound on every button interaction across the app
+  // Play subtle bubble sound on button clicks, or minimizing sound on window exits
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
+
+      // Check if clicking a backdrop or close/exit element
+      const isBackdrop = target.classList?.contains('backdrop-blur-xs') || target.classList?.contains('backdrop-blur-sm') || target.classList?.contains('backdrop-blur-md');
+      const closeBtn = target.closest('button[title*="Close" i], button[title*="Dismiss" i], [aria-label*="close" i], button[data-exit="true"]');
+      if (isBackdrop || closeBtn) {
+        playMinimizeSound();
+        return;
+      }
+
       const button = target.closest('button, [role="button"]');
       if (!button) return;
       // Skip bubble sound if clicking the ping button (ping button has its own bell chime sound effect)
@@ -157,6 +168,57 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  // Listen to live friend additions / deletions from other accounts
+  useEffect(() => {
+    if (!user) return;
+    const activitiesQuery = collection(db, 'friend_activities');
+    const unsubscribe = onSnapshot(activitiesQuery, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          // Ignore own activities
+          if (!data || data.fromUserId === user.uid) return;
+
+          if (data.type === 'added') {
+            // Check if this friend is already in our contacts book
+            const alreadyFriend = contacts.some(
+              (c) => c.name.toLowerCase() === (data.fromUserName || '').toLowerCase()
+            );
+            if (!alreadyFriend) {
+              setPendingFriendActivity({
+                type: 'added',
+                friendName: data.fromUserName || 'GLOKO Traveler',
+                countryId: data.countryId || '840',
+                countryName: data.countryName || 'Global',
+                city: data.city || '',
+                contactInfo: data.contactInfo || '',
+                notes: data.notes || 'Added you via GLOKO Network',
+              });
+            }
+          } else if (data.type === 'deleted') {
+            // Find if we have this contact in our book
+            const existing = contacts.find(
+              (c) => c.name.toLowerCase() === (data.fromUserName || '').toLowerCase()
+            );
+            if (existing) {
+              setPendingFriendActivity({
+                type: 'deleted',
+                friendName: data.fromUserName || existing.name,
+                countryId: existing.countryId,
+                countryName: existing.countryName,
+                city: existing.city,
+                existingContactId: existing.id,
+              });
+            }
+          }
+        }
+      });
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'friend_activities');
+    });
+    return () => unsubscribe();
+  }, [user, contacts]);
+
   // Finish onboarding handler
   const handleOnboardingComplete = async (countryId: string, enableGeolocation: boolean) => {
     safeStorage.setItem('gloko_onboarding_completed', 'true');
@@ -232,6 +294,74 @@ export default function App() {
       notes: friendData.notes,
     });
     showNotification(`💖 Successfully added ${friendData.name} as a friend!`, 'success');
+  };
+
+  // Handle mutual Add-Back from incoming friend activity pop-up
+  const handleAddBackFriend = async (activity: FriendActivityInfo) => {
+    const country = COUNTRY_LIST.find((c) => c.id === activity.countryId);
+    await handleAddContact({
+      name: activity.friendName,
+      countryId: activity.countryId,
+      countryName: country?.name || activity.countryName || 'Global',
+      city: activity.city || '',
+      contactInfo: activity.contactInfo || '',
+      notes: activity.notes || 'Added back via GLOKO mutual friend link',
+    });
+    showNotification(`🤝 Added ${activity.friendName} back to your travel book!`, 'success');
+  };
+
+  // Handle mutual Remove-Back from incoming friend deletion pop-up
+  const handleRemoveBackFriend = async (contactId: string) => {
+    const friend = contacts.find((c) => c.id === contactId);
+    const friendName = friend?.name || 'Friend';
+    await handleDeleteContact(contactId);
+    showNotification(`🗑️ Removed ${friendName} from your travel book.`, 'info');
+  };
+
+  // Simulation helpers for testing the incoming mutual friend flows
+  const handleSimulateIncomingAdd = () => {
+    const demoTravelers = [
+      { name: 'Elena Rostova', countryId: '380', countryName: 'Ukraine', city: 'Kyiv', contactInfo: '@elena_travels', notes: 'Met during summer trip' },
+      { name: 'Mateo Silva', countryId: '076', countryName: 'Brazil', city: 'Rio de Janeiro', contactInfo: 'mateo@rio.br', notes: 'Met on hiking trail' },
+      { name: 'Amara Okafor', countryId: '566', countryName: 'Nigeria', city: 'Lagos', contactInfo: 'amara@tech.ng', notes: 'Shared a photography tour' },
+      { name: 'Liam O’Connor', countryId: '372', countryName: 'Ireland', city: 'Dublin', contactInfo: '@liam_music', notes: 'Met at traditional pub' },
+    ];
+    // Pick one that is not in current contacts
+    const available = demoTravelers.filter(t => !contacts.some(c => c.name.toLowerCase() === t.name.toLowerCase()));
+    const chosen = available.length > 0 ? available[0] : {
+      name: `Traveler ${Math.floor(Math.random() * 1000)}`,
+      countryId: '250',
+      countryName: 'France',
+      city: 'Paris',
+      contactInfo: 'traveler@gloko.app',
+      notes: 'Added you to their GLOKO book'
+    };
+
+    setPendingFriendActivity({
+      type: 'added',
+      friendName: chosen.name,
+      countryId: chosen.countryId,
+      countryName: chosen.countryName,
+      city: chosen.city,
+      contactInfo: chosen.contactInfo,
+      notes: chosen.notes,
+    });
+  };
+
+  const handleSimulateIncomingDelete = () => {
+    if (contacts.length === 0) {
+      showNotification('💡 Add at least one friend to test the deletion activity pop-up!', 'info');
+      return;
+    }
+    const randomFriend = contacts[Math.floor(Math.random() * contacts.length)];
+    setPendingFriendActivity({
+      type: 'deleted',
+      friendName: randomFriend.name,
+      countryId: randomFriend.countryId,
+      countryName: randomFriend.countryName,
+      city: randomFriend.city,
+      existingContactId: randomFriend.id,
+    });
   };
 
   // Listen to keyboard dismissal & text input blur on mobile to reset viewport scale to 1.0 (reverses auto-zoom)
@@ -456,6 +586,19 @@ export default function App() {
       const cleanContact = JSON.parse(JSON.stringify(newContact));
       try {
         await setDoc(doc(db, 'contacts', contactId), cleanContact);
+        // Broadcast addition activity so mutual friend connections can receive the pop-up
+        const activityId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        await setDoc(doc(db, 'friend_activities', activityId), {
+          id: activityId,
+          fromUserId: user.uid,
+          fromUserName: user.displayName || user.email?.split('@')[0] || 'GLOKO Friend',
+          countryId: userHomeCountryId || contactData.countryId || '840',
+          countryName: getCountryInfo(userHomeCountryId || contactData.countryId)?.name || 'Global',
+          type: 'added',
+          city: contactData.city || '',
+          contactInfo: user.email || '',
+          createdAt: new Date().toISOString(),
+        });
       } catch (e) {
         handleFirestoreError(e, OperationType.WRITE, `contacts/${contactId}`);
       }
@@ -503,6 +646,17 @@ export default function App() {
         if (user) {
           try {
             await deleteDoc(doc(db, 'contacts', id));
+            // Broadcast deletion activity so mutual friend connections can receive the removal pop-up
+            const activityId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+            await setDoc(doc(db, 'friend_activities', activityId), {
+              id: activityId,
+              fromUserId: user.uid,
+              fromUserName: user.displayName || user.email?.split('@')[0] || 'GLOKO Friend',
+              countryId: countryId || '840',
+              countryName: contactToDelete?.countryName || 'Global',
+              type: 'deleted',
+              createdAt: new Date().toISOString(),
+            });
             // Reset color in Firestore if this was the last friend in that country
             if (countryId) {
               const otherCountryFriends = contacts.filter(
@@ -738,7 +892,10 @@ export default function App() {
       {/* Left Hand Options Menu Drawer Container */}
       <SettingsDrawer
         isOpen={showSettingsDrawer}
-        onClose={() => setShowSettingsDrawer(false)}
+        onClose={() => {
+          playMinimizeSound();
+          setShowSettingsDrawer(false);
+        }}
         user={user}
         isAuthLoading={isAuthLoading}
         contacts={contacts}
@@ -750,6 +907,8 @@ export default function App() {
         onLanguageChange={handleLanguageChange}
         onShowGuide={() => setShowGuideTour(true)}
         onOpenQRConnect={() => setShowQRConnect(true)}
+        onSimulateIncomingAdd={handleSimulateIncomingAdd}
+        onSimulateIncomingDelete={handleSimulateIncomingDelete}
         userHomeCountryId={userHomeCountryId}
         geolocationEnabled={geolocationEnabled}
       />
@@ -757,7 +916,10 @@ export default function App() {
       {/* Interactive Guide Tour Slides Deck Walkthrough Modal */}
       <GuideTourModal
         isOpen={showGuideTour}
-        onClose={() => setShowGuideTour(false)}
+        onClose={() => {
+          playMinimizeSound();
+          setShowGuideTour(false);
+        }}
         language={language}
       />
 
@@ -767,7 +929,10 @@ export default function App() {
           {/* Dark Backdrop */}
           <div
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity cursor-pointer"
-            onClick={() => handleSelectCountry(null, '')}
+            onClick={() => {
+              playMinimizeSound();
+              handleSelectCountry(null, '');
+            }}
           />
 
           {/* Centered Modal Card Container */}
@@ -781,7 +946,10 @@ export default function App() {
               onUpdateContact={handleUpdateContact}
               onDeleteContact={handleDeleteContact}
               onPing={handlePingFriend}
-              onBack={() => handleSelectCountry(null, '')}
+              onBack={() => {
+                playMinimizeSound();
+                handleSelectCountry(null, '');
+              }}
               currentColor={countryColors[selectedCountryId]}
               onColorChange={(color) => handleSaveCountryColor(selectedCountryId, color)}
             />
@@ -876,10 +1044,29 @@ export default function App() {
         {showQRConnect && (
           <QRAddFriendModal
             isOpen={showQRConnect}
-            onClose={() => setShowQRConnect(false)}
+            onClose={() => {
+              playMinimizeSound();
+              setShowQRConnect(false);
+            }}
             currentUser={user}
             homeCountryId={userHomeCountryId}
             onAddFriendFromQR={handleAddFriendFromQR}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Reciprocal / Mutual Friend Activity Modal Popup (Incoming Add or Delete) */}
+      <AnimatePresence>
+        {pendingFriendActivity && (
+          <FriendActivityModal
+            isOpen={!!pendingFriendActivity}
+            activity={pendingFriendActivity}
+            onClose={() => {
+              playMinimizeSound();
+              setPendingFriendActivity(null);
+            }}
+            onAddBack={handleAddBackFriend}
+            onRemoveBack={handleRemoveBackFriend}
           />
         )}
       </AnimatePresence>

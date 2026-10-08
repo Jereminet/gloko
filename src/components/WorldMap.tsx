@@ -444,7 +444,20 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   const getCountryColor = (countryId: string, count: number, isSelected: boolean, inLiveMode: boolean = false) => {
     const paddedId = countryId.padStart(3, '0');
 
-    // Unrecorded country (0 friends, or 0 live people in live mode)
+    // In Live Mode:
+    // Countries with at least one live friend all have the same color (light blue)
+    // All other countries are transparent but still visible, like if they were disabled
+    if (inLiveMode) {
+      if (count > 0) {
+        // Light blue (#7dd3fc / #bae6fd) with slight depth on selection
+        return isSelected ? '#38bdf8' : '#7dd3fc';
+      }
+      // Transparent disabled look (semi-transparent subtle fill over ocean)
+      return isSelected ? 'rgba(255, 255, 255, 0.45)' : 'rgba(255, 255, 255, 0.22)';
+    }
+
+    // Normal Fixed Mode:
+    // Unrecorded country (0 friends)
     if (count === 0) {
       if (isSelected) {
         return '#e0ccaa'; // Rich/deep warm golden-biscuit color when selected
@@ -464,20 +477,8 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           return isSelected ? customHsl.darker(0.25).formatHex() : customHsl.formatHex();
         }
       } catch (err) {
-        // Fall back to orange/emerald scale
+        // Fall back to orange scale
       }
-    }
-
-    if (inLiveMode) {
-      // Distinct vibrant emerald live radar hue (representing real-time live GPS signals)
-      const baseHue = 152; // Emerald green
-      const saturation = 0.78;
-      const lightness = Math.max(0.26, 0.65 - tier * 0.08);
-      const emeraldHsl = d3.hsl(baseHue, saturation, lightness);
-      if (isSelected) {
-        return emeraldHsl.darker(0.2).formatHex();
-      }
-      return emeraldHsl.formatHex();
     }
 
     // Default base color: warm, vibrant Orange
@@ -1438,15 +1439,23 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
               const isSelected = selectedCountryId === paddedId;
               const isMobileHovered = mobileHoveredId === paddedId;
 
+              const hasLiveFriends = isLiveMode && count > 0;
+              const strokeColor = isLiveMode
+                ? (hasLiveFriends ? '#ef4444' : 'rgba(255, 255, 255, 0.4)')
+                : (isSelected ? '#4f46e5' : '#b2a897');
+              const strokeWidthVal = isLiveMode
+                ? (hasLiveFriends ? (isSelected ? 2.5 / zoom : 1.8 / zoom) : 0.4 / zoom)
+                : (isSelected ? 1.8 / zoom : (isMobileHovered ? 2.8 / zoom : 0.55 / zoom));
+
               return (
                 <g key={paddedId}>
                   {/* Crisp flat country base path */}
                   <path
                     d={pathData}
                     fill={getCountryColor(paddedId, count, isSelected, isLiveMode)}
-                    stroke={isSelected ? (isLiveMode ? '#059669' : '#4f46e5') : '#b2a897'}
-                    strokeWidth={isSelected ? 1.8 / zoom : (isMobileHovered ? 2.8 / zoom : 0.55 / zoom)}
-                    className="map-country select-none outline-none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidthVal}
+                    className={`map-country select-none outline-none ${hasLiveFriends ? 'map-country-live-pulse' : ''}`}
                     style={{
                       fill: getCountryColor(paddedId, count, isSelected, isLiveMode),
                     }}

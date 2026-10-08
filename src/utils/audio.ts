@@ -96,3 +96,38 @@ export function playBellSound(): void {
     // Graceful fallback
   }
 }
+
+/**
+ * Play a gentle, descending "minimize" / closing sound when exiting windows, modals, or drawers.
+ * Soft descending frequency sweep (520Hz down to 140Hz) with smooth tapering release.
+ */
+export function playMinimizeSound(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+
+    // Downward pitch sweep conveying minimization / closing away
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.exponentialRampToValueAtTime(140, now + 0.13);
+
+    // Smooth soft volume envelope
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.16);
+  } catch {
+    // Graceful fallback
+  }
+}
+

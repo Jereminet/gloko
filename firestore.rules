@@ -64,6 +64,23 @@ service cloud.firestore {
           && data.status is string && (data.status == 'unread' || data.status == 'read');
     }
 
+    function isValidFriendActivity(data) {
+      return data.keys().hasAll(['id', 'fromUserId', 'fromUserName', 'countryId', 'type', 'createdAt'])
+          && data.keys().size() <= 11
+          && data.id is string && data.id.size() <= 128
+          && data.fromUserId is string && data.fromUserId == request.auth.uid
+          && data.fromUserName is string && data.fromUserName.size() <= 100
+          && data.countryId is string && data.countryId.size() <= 10
+          && data.type is string && (data.type == 'added' || data.type == 'deleted')
+          && data.createdAt is string && data.createdAt.size() <= 100
+          && (!('toUserEmail' in data) || (data.toUserEmail is string && data.toUserEmail.size() <= 150))
+          && (!('city' in data) || (data.city is string && data.city.size() <= 100))
+          && (!('contactInfo' in data) || (data.contactInfo is string && data.contactInfo.size() <= 200))
+          && (!('countryName' in data) || (data.countryName is string && data.countryName.size() <= 100))
+          && (!('notes' in data) || (data.notes is string && data.notes.size() <= 500));
+    }
+
+
     // Contacts collection rules
     match /contacts/{contactId} {
       allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
@@ -110,5 +127,14 @@ service cloud.firestore {
                     
       allow delete: if false;
     }
+
+    // Global friend_activities collection rules (for mutual friend additions / deletions notifications)
+    match /friend_activities/{activityId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isUserVerified() && isValidId(activityId) && isValidFriendActivity(request.resource.data);
+      allow update, delete: if false;
+    }
   }
 }
+

@@ -84,3 +84,22 @@
 .animate-fly-message {
   animation: flyMessage 0.95s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
+
+/* Slow red pulse animation for countries with live friends in Live Mode */
+@keyframes liveBorderPulse {
+  0%, 100% {
+    stroke: #ef4444;
+    stroke-opacity: 1;
+    filter: drop-shadow(0 0 1px rgba(239, 68, 68, 0.6));
+  }
+  50% {
+    stroke: #f87171;
+    stroke-opacity: 0.55;
+    filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.9));
+  }
+}
+
+.map-country-live-pulse {
+  animation: liveBorderPulse 2.4s ease-in-out infinite;
+}
+
