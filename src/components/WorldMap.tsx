@@ -1207,13 +1207,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
               {/* Inline Expanded Friends Book: History of last 5 friends added with corresponding date */}
               {showStatsDetail && (
                 <div className="border-t border-slate-100 flex flex-col w-full max-h-[290px] sm:max-h-[350px] bg-white animate-in fade-in slide-in-from-top-1 duration-150">
-                  <div className="px-3 py-1.5 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest font-sans">
-                    <span className="flex items-center gap-1 text-slate-500">
-                      <Clock className="w-3 h-3 text-indigo-500" />
-                      <span>Last 5 Friends Added</span>
-                    </span>
-                  </div>
-
                   <div className="overflow-y-auto flex-grow divide-y divide-slate-100/70 p-1">
                     {(() => {
                       const recentHistory = [...contacts]
@@ -1436,11 +1429,9 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 ? (hasLiveFriends ? (isSelected ? 2.5 / zoom : 1.8 / zoom) : 0.4 / zoom)
                 : (isSelected ? 1.8 / zoom : (isMobileHovered ? 2.8 / zoom : 0.55 / zoom));
 
-              const centroid = hasLiveFriends ? pathGenerator.centroid(feature) : null;
-
               return (
                 <g key={paddedId}>
-                  {/* Crisp flat country base path */}
+                  {/* Crisp flat country base path with live mode coloring and slow red pulse border */}
                   <path
                     d={pathData}
                     fill={getCountryColor(paddedId, count, isSelected, isLiveMode)}
@@ -1458,33 +1449,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                     onMouseMove={(e) => handleCountryMouseMove(e, feature)}
                     onMouseLeave={handleCountryMouseLeave}
                   />
-
-                  {/* Prominent Live Mode Radar Beacon Marker on countries with live friends */}
-                  {hasLiveFriends && centroid && !isNaN(centroid[0]) && !isNaN(centroid[1]) && (
-                    <g transform={`translate(${centroid[0]}, ${centroid[1]})`} className="pointer-events-none select-none">
-                      {/* Pulsing beacon radar wave */}
-                      <circle
-                        r={12 / zoom}
-                        fill="none"
-                        stroke="#ef4444"
-                        strokeWidth={1.5 / zoom}
-                        className="animate-ping opacity-75"
-                      />
-                      <circle
-                        r={7 / zoom}
-                        fill="#ef4444"
-                        fillOpacity={0.25}
-                        stroke="#ef4444"
-                        strokeWidth={1 / zoom}
-                      />
-                      <circle
-                        r={3.5 / zoom}
-                        fill="#ef4444"
-                        stroke="#ffffff"
-                        strokeWidth={1 / zoom}
-                      />
-                    </g>
-                  )}
                 </g>
               );
             })}
@@ -1525,7 +1489,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           onTouchStart={(e) => e.stopPropagation()}
           onTouchMove={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-20 sm:bottom-22 left-1/2 -translate-x-1/2 z-40 pointer-events-auto flex items-center gap-2.5 sm:gap-3 bg-white/95 backdrop-blur-md text-slate-800 px-3.5 py-2 sm:px-4.5 sm:py-2.5 rounded-2xl shadow-xl border border-slate-200/90 animate-in fade-in slide-in-from-bottom-2 duration-200 select-none max-w-[calc(100vw-32px)]"
+          className="absolute bottom-28 sm:bottom-32 left-1/2 -translate-x-1/2 z-40 pointer-events-auto flex items-center gap-2.5 sm:gap-3 bg-white/95 backdrop-blur-md text-slate-800 px-3.5 py-2 sm:px-4.5 sm:py-2.5 rounded-2xl shadow-xl border border-slate-200/90 animate-in fade-in slide-in-from-bottom-2 duration-200 select-none max-w-[calc(100vw-32px)]"
         >
           <span className="text-xl sm:text-2xl select-none leading-none flex-shrink-0">
             {getCountryInfo(focusedCountryId)?.flag || '🗺️'}

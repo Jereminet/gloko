@@ -62,7 +62,6 @@ export default function App() {
     return safeStorage.getItem('gloko_geolocation_enabled') === 'true';
   });
   const [isLiveMode, setIsLiveMode] = useState(false);
-  const [notifications, setNotifications] = useState<Array<{ id: string; message: string; type: string; friendName?: string }>>([]);
   const [pendingFriendActivity, setPendingFriendActivity] = useState<FriendActivityInfo | null>(null);
 
   // Refs for stable activity handling without false re-triggering
@@ -147,14 +146,8 @@ export default function App() {
     }
   }, [hasLoaded, isMapLoaded, triggerGuideAfterLoad]);
 
-  // Toast Notification helper
-  const showNotification = (message: string, type: 'info' | 'success' | 'ping' = 'info', friendName?: string) => {
-    const id = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    setNotifications(prev => [...prev, { id, message, type, friendName }]);
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 4500);
-  };
+  // Notification helper (no-op: black feed pop-ups completely removed)
+  const showNotification = (_message?: string, _type?: 'info' | 'success' | 'ping', _friendName?: string) => {};
 
   // Onboarding first-time connection check
   useEffect(() => {
@@ -227,7 +220,7 @@ export default function App() {
               setPendingFriendActivity({
                 type: 'added',
                 friendName: data.fromUserName || 'GLOKO Traveler',
-                countryId: data.countryId || '840',
+                countryId: String(data.countryId || '840').padStart(3, '0'),
                 countryName: data.countryName || 'Global',
                 city: data.city || '',
                 contactInfo: data.contactInfo || '',
@@ -235,24 +228,33 @@ export default function App() {
               });
             }
           } else if (data.type === 'deleted') {
-            // If this friend was recently added via QR code, do not immediately prompt deletion
-            if (recentlyAddedFriendNamesRef.current.has(friendNameLower)) {
-              return;
-            }
+            // A mutual friend has removed their connection - notify the user and allow mutual removal
+            const existing = contactsRef.current.find((c) => {
+              const nameMatch = c.name.trim().toLowerCase() === friendNameLower;
+              const contactMatch = Boolean(
+                data.contactInfo && c.contactInfo && c.contactInfo.trim().toLowerCase() === data.contactInfo.trim().toLowerCase()
+              );
+              const noteMatch = Boolean(
+                data.notes && c.name.trim().toLowerCase() === data.notes.trim().toLowerCase()
+              );
+              return nameMatch || contactMatch || noteMatch;
+            });
 
-            // Find if we have this contact in our book
-            const existing = contactsRef.current.find(
-              (c) => c.name.toLowerCase() === friendNameLower
-            );
             if (existing) {
-              setPendingFriendActivity({
-                type: 'deleted',
-                friendName: data.fromUserName || existing.name,
-                countryId: existing.countryId,
-                countryName: existing.countryName,
-                city: existing.city,
-                existingContactId: existing.id,
-              });
+              const existingAddedTime = existing.createdAt ? new Date(existing.createdAt).getTime() : 0;
+              const activityCreatedTime = data.createdAt ? new Date(data.createdAt).getTime() : Date.now();
+
+              // Only trigger if deletion occurred after friendship was established
+              if (!existingAddedTime || activityCreatedTime >= existingAddedTime - 5000) {
+                setPendingFriendActivity({
+                  type: 'deleted',
+                  friendName: existing.name || data.fromUserName || 'Friend',
+                  countryId: existing.countryId,
+                  countryName: existing.countryName,
+                  city: existing.city,
+                  existingContactId: existing.id,
+                });
+              }
             }
           }
         }
@@ -635,17 +637,50 @@ export default function App() {
   const handleAddContact = async (contactData: Omit<Contact, 'id' | 'createdAt'>): Promise<string> => {
     const contactId = `contact-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const createdAt = new Date().toISOString();
+    const paddedCountryId = String(contactData.countryId || '840').padStart(3, '0');
+    const safeCountry = COUNTRY_LIST.find((c) => c.id === paddedCountryId);
+    const countryName = String(contactData.countryName || safeCountry?.name || 'Global').slice(0, 100);
+
+    const safeContact: Contact = {
+      id: contactId,
+      name: String(contactData.name || 'Friend').trim().slice(0, 100),
+      countryId: paddedCountryId,
+      countryName,
+      city: String(contactData.city || '').slice(0, 100),
+      contactInfo: String(contactData.contactInfo || '').slice(0, 200),
+      notes: String(contactData.notes || '').slice(0, 5000),
+      createdAt,
+      geolocationEnabled: Boolean(contactData.geolocationEnabled ?? true),
+      liveCountryId: String(contactData.liveCountryId || paddedCountryId).padStart(3, '0'),
+      photoUrl: contactData.photoUrl ? String(contactData.photoUrl).slice(0, 524288) : undefined,
+    };
 
     if (user) {
       const newContact: Contact = {
-        ...contactData,
-        id: contactId,
+        ...safeContact,
         userId: user.uid,
-        createdAt,
       };
       // Optimistically update contacts state immediately
       setContacts((prev) => [newContact, ...prev.filter((c) => c.id !== contactId)]);
-      const cleanContact = JSON.parse(JSON.stringify(newContact));
+      saveAndSyncContacts([newContact, ...contacts.filter((c) => c.id !== contactId)]);
+
+      const cleanContact: Record<string, any> = {
+        id: newContact.id,
+        userId: user.uid,
+        name: newContact.name,
+        countryId: newContact.countryId,
+        countryName: newContact.countryName,
+        createdAt: newContact.createdAt,
+        city: newContact.city,
+        contactInfo: newContact.contactInfo,
+        notes: newContact.notes,
+        geolocationEnabled: newContact.geolocationEnabled,
+        liveCountryId: newContact.liveCountryId,
+      };
+      if (newContact.photoUrl) {
+        cleanContact.photoUrl = newContact.photoUrl;
+      }
+
       try {
         await setDoc(doc(db, 'contacts', contactId), cleanContact);
       } catch (e) {
@@ -659,10 +694,10 @@ export default function App() {
           id: activityId,
           fromUserId: user.uid,
           fromUserName: user.displayName || user.email?.split('@')[0] || 'GLOKO Friend',
-          countryId: userHomeCountryId || contactData.countryId || '840',
-          countryName: getCountryInfo(userHomeCountryId || contactData.countryId)?.name || 'Global',
+          countryId: userHomeCountryId || paddedCountryId,
+          countryName: getCountryInfo(userHomeCountryId || paddedCountryId)?.name || 'Global',
           type: 'added',
-          city: contactData.city || '',
+          city: safeContact.city || '',
           contactInfo: user.email || '',
           createdAt: new Date().toISOString(),
         });
@@ -670,12 +705,7 @@ export default function App() {
         // Non-critical broadcast
       }
     } else {
-      const newContact: Contact = {
-        ...contactData,
-        id: contactId,
-        createdAt,
-      };
-      const updated = [newContact, ...contacts];
+      const updated = [safeContact, ...contacts];
       saveAndSyncContacts(updated);
     }
     return contactId;
@@ -715,15 +745,26 @@ export default function App() {
             await deleteDoc(doc(db, 'contacts', id));
             // Broadcast deletion activity so mutual friend connections can receive the removal pop-up
             const activityId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-            await setDoc(doc(db, 'friend_activities', activityId), {
+            const deleterName = user.displayName || user.email?.split('@')[0] || 'GLOKO Friend';
+            const deletionPayload: Record<string, any> = {
               id: activityId,
               fromUserId: user.uid,
-              fromUserName: user.displayName || user.email?.split('@')[0] || 'GLOKO Friend',
-              countryId: countryId || '840',
-              countryName: contactToDelete?.countryName || 'Global',
+              fromUserName: deleterName.slice(0, 100),
+              countryId: String(countryId || '840').padStart(3, '0'),
+              countryName: String(contactToDelete?.countryName || 'Global').slice(0, 100),
               type: 'deleted',
               createdAt: new Date().toISOString(),
-            });
+            };
+            if (contactToDelete?.name) {
+              deletionPayload.notes = contactToDelete.name.slice(0, 500);
+            }
+            if (contactToDelete?.contactInfo && contactToDelete.contactInfo.includes('@')) {
+              deletionPayload.toUserEmail = contactToDelete.contactInfo.slice(0, 150);
+            }
+            if (user.email) {
+              deletionPayload.contactInfo = user.email.slice(0, 200);
+            }
+            await setDoc(doc(db, 'friend_activities', activityId), deletionPayload);
             // Reset color in Firestore if this was the last friend in that country
             if (countryId) {
               const otherCountryFriends = contacts.filter(
@@ -1148,25 +1189,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Floating System Notifications and Pings Toaster */}
-      <div className="fixed top-18 sm:top-20 right-4 z-[110] flex flex-col gap-2.5 max-w-xs w-full pointer-events-none">
-        <AnimatePresence>
-          {notifications.map((notif) => (
-            <motion.div
-              key={notif.id}
-              initial={{ opacity: 0, y: -20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
-              className="pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white px-4 py-3.5 rounded-2xl shadow-xl border border-slate-750/50 flex items-start gap-3 w-full"
-            >
-              <div className="h-2 w-2 rounded-full bg-indigo-400 shrink-0 animate-pulse mt-1.5" />
-              <div className="flex-1 text-xs font-medium font-sans leading-relaxed text-slate-100">
-                {notif.message}
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
+
 
     </div>
   );
