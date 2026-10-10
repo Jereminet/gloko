@@ -9,7 +9,16 @@ interface QRAddFriendModalProps {
   onClose: () => void;
   currentUser: any; // User profile
   homeCountryId: string;
-  onAddFriendFromQR: (friendData: { name: string; countryId: string; city: string; contact: string; notes: string }) => void;
+  userGeolocationEnabled?: boolean;
+  onAddFriendFromQR: (friendData: {
+    name: string;
+    countryId: string;
+    city: string;
+    contact: string;
+    notes: string;
+    geolocationEnabled?: boolean;
+    liveCountryId?: string;
+  }) => void;
 }
 
 export default function QRAddFriendModal({
@@ -17,6 +26,7 @@ export default function QRAddFriendModal({
   onClose,
   currentUser,
   homeCountryId,
+  userGeolocationEnabled,
   onAddFriendFromQR,
 }: QRAddFriendModalProps) {
   const t = getTranslation();
@@ -37,7 +47,9 @@ export default function QRAddFriendModal({
     countryId: homeCountry?.id || "840",
     city: homeCountry?.continent || "World Citizen",
     contact: currentUser?.email || "hello@gloko.app",
-    notes: "Added via GLOKO QR Share Code"
+    notes: "Added via GLOKO QR Share Code",
+    geolocationEnabled: userGeolocationEnabled ?? true,
+    liveCountryId: homeCountry?.id || "840",
   };
 
   const rawShareString = btoa(JSON.stringify(myProfileData));
@@ -72,7 +84,11 @@ export default function QRAddFriendModal({
       if (!parsed.name || !parsed.countryId) {
         throw new Error("Invalid profile payload structure.");
       }
-      setScanResult(parsed);
+      setScanResult({
+        ...parsed,
+        geolocationEnabled: parsed.geolocationEnabled !== undefined ? parsed.geolocationEnabled : true,
+        liveCountryId: parsed.liveCountryId || parsed.countryId,
+      });
       setScanError(null);
     } catch (e) {
       setScanError("Oops! That code wasn't recognized. Make sure you copy/paste the entire Share Code correctly.");
@@ -85,14 +101,14 @@ export default function QRAddFriendModal({
     setScanError(null);
     setScanResult(null);
     
-    // Simulate camera feed decoding
+    // Simulate camera feed decoding with enabled geolocalisation
     setTimeout(() => {
-      // Simulate scanning someone's code (we'll generate a fun traveler friend!)
+      // Simulate scanning someone's code with geolocalisation enabled
       const travelers = [
-        { name: "Martina S.", countryId: "380", city: "Kyiv", contact: "@martina_travels", notes: "Met at a cozy hostel in Tokyo!" },
-        { name: "Carlos Ruiz", countryId: "724", city: "Madrid", contact: "carlos.ruiz@hola.es", notes: "Shared a surfboard in Bali!" },
-        { name: "Yuki Tanaka", countryId: "392", city: "Kyoto", contact: "@yuki_t", notes: "Gave great coffee recommendations!" },
-        { name: "Sophie Dubois", countryId: "250", city: "Paris", contact: "sophie@dubois.fr", notes: "Climbed Mount Fuji together!" }
+        { name: "Martina S.", countryId: "380", liveCountryId: "380", geolocationEnabled: true, city: "Kyiv", contact: "@martina_travels", notes: "Met at a cozy hostel in Tokyo!" },
+        { name: "Carlos Ruiz", countryId: "724", liveCountryId: "724", geolocationEnabled: true, city: "Madrid", contact: "carlos.ruiz@hola.es", notes: "Shared a surfboard in Bali!" },
+        { name: "Yuki Tanaka", countryId: "392", liveCountryId: "392", geolocationEnabled: true, city: "Kyoto", contact: "@yuki_t", notes: "Gave great coffee recommendations!" },
+        { name: "Sophie Dubois", countryId: "250", liveCountryId: "250", geolocationEnabled: true, city: "Paris", contact: "sophie@dubois.fr", notes: "Climbed Mount Fuji together!" }
       ];
       
       const randomTraveler = travelers[Math.floor(Math.random() * travelers.length)];
@@ -105,7 +121,15 @@ export default function QRAddFriendModal({
 
   const handleAddScannedFriend = () => {
     if (scanResult) {
-      onAddFriendFromQR(scanResult);
+      onAddFriendFromQR({
+        name: scanResult.name,
+        countryId: scanResult.countryId,
+        city: scanResult.city || '',
+        contact: scanResult.contact || '',
+        notes: scanResult.notes || '',
+        geolocationEnabled: scanResult.geolocationEnabled !== undefined ? scanResult.geolocationEnabled : true,
+        liveCountryId: scanResult.liveCountryId || scanResult.countryId,
+      });
       onClose();
     }
   };
@@ -264,6 +288,10 @@ export default function QRAddFriendModal({
                         {scanResult.city && <span>• {scanResult.city}</span>}
                       </p>
                       <p className="text-[9px] text-indigo-600 font-mono mt-1 truncate">{scanResult.contact}</p>
+                      <div className="flex items-center gap-1 mt-1 text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-semibold border border-emerald-200/60 w-fit">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>Live Geolocation: Enabled (Visible in Live Mode)</span>
+                      </div>
                     </div>
                   </div>
 

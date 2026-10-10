@@ -18,7 +18,7 @@ import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDocs }
 import { AppLanguage, TRANSLATIONS } from './utils/translations';
 import { getCountryInfo, COUNTRY_LIST } from './data/countries';
 import { safeStorage } from './utils/storage';
-import { playBubbleSound, playMinimizeSound } from './utils/audio';
+import { playBubbleSound, playMinimizeSound, unlockAudioContext } from './utils/audio';
 
 const LOCAL_STORAGE_KEY = 'travel_contacts_map_journal';
 
@@ -65,9 +65,23 @@ export default function App() {
   const [notifications, setNotifications] = useState<Array<{ id: string; message: string; type: string; friendName?: string }>>([]);
   const [pendingFriendActivity, setPendingFriendActivity] = useState<FriendActivityInfo | null>(null);
 
-  // Play subtle bubble sound on button clicks, or minimizing sound on window exits
+  // Refs for stable activity handling without false re-triggering
+  const sessionStartTimeRef = useRef<number>(Date.now());
+  const contactsRef = useRef<Contact[]>(contacts);
+  contactsRef.current = contacts;
+  const recentlyAddedFriendNamesRef = useRef<Set<string>>(new Set());
+
+  // Play subtle bubble sound on button clicks, or minimizing sound on window exits (works seamlessly on desktop & mobile)
   useEffect(() => {
-    const handleGlobalClick = (e: MouseEvent) => {
+    // Unlock AudioContext on first touch/interaction on mobile browsers
+    const handleInitialUnlock = () => {
+      unlockAudioContext();
+    };
+    window.addEventListener('touchstart', handleInitialUnlock, { once: true, passive: true });
+    window.addEventListener('touchend', handleInitialUnlock, { once: true, passive: true });
+    window.addEventListener('pointerdown', handleInitialUnlock, { once: true, passive: true });
+
+    const handleGlobalInteraction = (e: Event) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
@@ -88,9 +102,12 @@ export default function App() {
       playBubbleSound();
     };
 
-    window.addEventListener('click', handleGlobalClick, { capture: true });
+    window.addEventListener('click', handleGlobalInteraction, { capture: true });
     return () => {
-      window.removeEventListener('click', handleGlobalClick, { capture: true });
+      window.removeEventListener('touchstart', handleInitialUnlock);
+      window.removeEventListener('touchend', handleInitialUnlock);
+      window.removeEventListener('pointerdown', handleInitialUnlock);
+      window.removeEventListener('click', handleGlobalInteraction, { capture: true });
     };
   }, []);
 
@@ -152,8 +169,14 @@ export default function App() {
   // Listen to live system pings from other users (authenticated mode only)
   useEffect(() => {
     if (!user) return;
+    let isInitialPingsSnapshot = true;
     const pingsQuery = query(collection(db, 'pings'), where('status', '==', 'unread'));
     const unsubscribe = onSnapshot(pingsQuery, (snapshot) => {
+      if (isInitialPingsSnapshot) {
+        // Suppress past history notifications upon connection
+        isInitialPingsSnapshot = false;
+        return;
+      }
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const data = change.doc.data();
@@ -171,18 +194,34 @@ export default function App() {
   // Listen to live friend additions / deletions from other accounts
   useEffect(() => {
     if (!user) return;
+    let isInitialActivitiesSnapshot = true;
     const activitiesQuery = collection(db, 'friend_activities');
     const unsubscribe = onSnapshot(activitiesQuery, (snapshot) => {
+      if (isInitialActivitiesSnapshot) {
+        // Suppress past history actions upon connection
+        isInitialActivitiesSnapshot = false;
+        return;
+      }
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const data = change.doc.data();
           // Ignore own activities
           if (!data || data.fromUserId === user.uid) return;
 
+          // Ignore activities created before current session started
+          if (data.createdAt) {
+            const createdAtTime = new Date(data.createdAt).getTime();
+            if (!isNaN(createdAtTime) && createdAtTime < sessionStartTimeRef.current - 5000) {
+              return;
+            }
+          }
+
+          const friendNameLower = (data.fromUserName || '').trim().toLowerCase();
+
           if (data.type === 'added') {
             // Check if this friend is already in our contacts book
-            const alreadyFriend = contacts.some(
-              (c) => c.name.toLowerCase() === (data.fromUserName || '').toLowerCase()
+            const alreadyFriend = contactsRef.current.some(
+              (c) => c.name.toLowerCase() === friendNameLower
             );
             if (!alreadyFriend) {
               setPendingFriendActivity({
@@ -196,9 +235,14 @@ export default function App() {
               });
             }
           } else if (data.type === 'deleted') {
+            // If this friend was recently added via QR code, do not immediately prompt deletion
+            if (recentlyAddedFriendNamesRef.current.has(friendNameLower)) {
+              return;
+            }
+
             // Find if we have this contact in our book
-            const existing = contacts.find(
-              (c) => c.name.toLowerCase() === (data.fromUserName || '').toLowerCase()
+            const existing = contactsRef.current.find(
+              (c) => c.name.toLowerCase() === friendNameLower
             );
             if (existing) {
               setPendingFriendActivity({
@@ -217,7 +261,7 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'friend_activities');
     });
     return () => unsubscribe();
-  }, [user, contacts]);
+  }, [user]);
 
   // Finish onboarding handler
   const handleOnboardingComplete = async (countryId: string, enableGeolocation: boolean) => {
@@ -283,7 +327,21 @@ export default function App() {
   };
 
   // Add friend from QR scan handler
-  const handleAddFriendFromQR = async (friendData: { name: string; countryId: string; city: string; contact: string; notes: string }) => {
+  const handleAddFriendFromQR = async (friendData: {
+    name: string;
+    countryId: string;
+    city: string;
+    contact: string;
+    notes: string;
+    geolocationEnabled?: boolean;
+    liveCountryId?: string;
+  }) => {
+    // Record as recently added friend to prevent any false deletion popup
+    recentlyAddedFriendNamesRef.current.add(friendData.name.trim().toLowerCase());
+    if (pendingFriendActivity?.friendName.trim().toLowerCase() === friendData.name.trim().toLowerCase()) {
+      setPendingFriendActivity(null);
+    }
+
     const country = COUNTRY_LIST.find(c => c.id === friendData.countryId);
     await handleAddContact({
       name: friendData.name,
@@ -292,6 +350,8 @@ export default function App() {
       city: friendData.city,
       contactInfo: friendData.contact,
       notes: friendData.notes,
+      geolocationEnabled: friendData.geolocationEnabled !== undefined ? friendData.geolocationEnabled : true,
+      liveCountryId: friendData.liveCountryId || friendData.countryId,
     });
     showNotification(`💖 Successfully added ${friendData.name} as a friend!`, 'success');
   };
@@ -583,10 +643,17 @@ export default function App() {
         userId: user.uid,
         createdAt,
       };
+      // Optimistically update contacts state immediately
+      setContacts((prev) => [newContact, ...prev.filter((c) => c.id !== contactId)]);
       const cleanContact = JSON.parse(JSON.stringify(newContact));
       try {
         await setDoc(doc(db, 'contacts', contactId), cleanContact);
-        // Broadcast addition activity so mutual friend connections can receive the pop-up
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, `contacts/${contactId}`);
+      }
+
+      // Broadcast addition activity safely
+      try {
         const activityId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
         await setDoc(doc(db, 'friend_activities', activityId), {
           id: activityId,
@@ -599,8 +666,8 @@ export default function App() {
           contactInfo: user.email || '',
           createdAt: new Date().toISOString(),
         });
-      } catch (e) {
-        handleFirestoreError(e, OperationType.WRITE, `contacts/${contactId}`);
+      } catch {
+        // Non-critical broadcast
       }
     } else {
       const newContact: Contact = {
@@ -860,7 +927,16 @@ export default function App() {
           userHomeCountryId={userHomeCountryId}
           userGeolocationEnabled={geolocationEnabled}
           isLiveMode={isLiveMode}
-          onToggleLiveMode={() => setIsLiveMode((prev) => !prev)}
+          onToggleLiveMode={() => {
+            setIsLiveMode((prev) => {
+              const next = !prev;
+              if (next) {
+                // When switching to live mode, close selected country popup
+                handleSelectCountry(null, '');
+              }
+              return next;
+            });
+          }}
           onLogoClick={() => {
             // Trigger immersive loading screen transition before centering
             setHasLoaded(false);
@@ -1050,6 +1126,7 @@ export default function App() {
             }}
             currentUser={user}
             homeCountryId={userHomeCountryId}
+            userGeolocationEnabled={geolocationEnabled}
             onAddFriendFromQR={handleAddFriendFromQR}
           />
         )}

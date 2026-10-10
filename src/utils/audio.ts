@@ -1,8 +1,9 @@
-// Web Audio API Synthesizer for subtle bubble click sound & ping bell chime
+// Web Audio API Synthesizer for subtle bubble click sound, ping bell chime, and window minimize sound
+// Engineered with robust mobile support (iOS Safari & Android WebKit touch unlocking)
 
 let audioContext: AudioContext | null = null;
 
-function getAudioContext(): AudioContext | null {
+export function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   try {
     if (!audioContext) {
@@ -12,7 +13,7 @@ function getAudioContext(): AudioContext | null {
       }
     }
     if (audioContext && audioContext.state === 'suspended') {
-      audioContext.resume();
+      audioContext.resume().catch(() => {});
     }
     return audioContext;
   } catch {
@@ -21,13 +22,36 @@ function getAudioContext(): AudioContext | null {
 }
 
 /**
- * Play a subtle, organic bubble "pop" / "bloop" sound on every button click.
- * Subtle volume, brief duration (~60ms), pleasing pitch sweep.
+ * Mobile-friendly audio unlocker triggered on touch/pointer events.
+ * Crucial for iOS WebKit: creates & plays a silent buffer inside the user gesture.
+ */
+export function unlockAudioContext(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+    // Universal iOS WebKit unlock: play a silent 1-sample buffer
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+  } catch {}
+}
+
+/**
+ * Play a subtle, organic bubble "pop" / "bloop" sound on button clicks.
+ * Tuned with higher presence for crisp audibility on both desktop and mobile speakers.
  */
 export function playBubbleSound(): void {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
 
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
@@ -35,22 +59,21 @@ export function playBubbleSound(): void {
 
     osc.type = 'sine';
     
-    // Quick rising pitch sweep that characterizes a bubble bloop
-    // Randomize slightly between 480Hz and 540Hz for organic variation
-    const baseFreq = 480 + Math.random() * 60;
+    // Quick rising pitch sweep that characterizes a cheerful bubble bloop
+    const baseFreq = 520 + Math.random() * 70;
     osc.frequency.setValueAtTime(baseFreq, now);
-    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.9, now + 0.05);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.85, now + 0.045);
 
-    // Subtle gentle volume envelope
+    // Envelope with clean mobile presence
     gain.gain.setValueAtTime(0.001, now);
-    gain.gain.linearRampToValueAtTime(0.12, now + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.065);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.007);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
 
     osc.start(now);
-    osc.stop(now + 0.07);
+    osc.stop(now + 0.075);
   } catch {
     // Graceful fallback for restricted environments
   }
@@ -64,12 +87,15 @@ export function playBellSound(): void {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
 
     const now = ctx.currentTime;
     
-    // Bell harmonic frequencies (high E6 bell fundamental + crisp overtones)
+    // Bell harmonic frequencies (crisp overtones tuned for phone & desktop speakers)
     const frequencies = [1318.5, 2637, 3955.5, 5274];
-    const gains = [0.22, 0.12, 0.07, 0.04];
+    const gains = [0.24, 0.14, 0.08, 0.04];
     const decayTimes = [0.75, 0.55, 0.35, 0.2];
 
     const masterGain = ctx.createGain();
@@ -99,33 +125,44 @@ export function playBellSound(): void {
 
 /**
  * Play a gentle, descending "minimize" / closing sound when exiting windows, modals, or drawers.
- * Soft descending frequency sweep (520Hz down to 140Hz) with smooth tapering release.
+ * Descends from ~680Hz down to ~260Hz so it remains audible on mobile phone speakers while smooth.
  */
 export function playMinimizeSound(): void {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
 
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
+    const subOsc = ctx.createOscillator();
     const gain = ctx.createGain();
 
     osc.type = 'sine';
+    subOsc.type = 'triangle';
 
-    // Downward pitch sweep conveying minimization / closing away
-    osc.frequency.setValueAtTime(520, now);
-    osc.frequency.exponentialRampToValueAtTime(140, now + 0.13);
+    // Downward pitch sweep conveying smooth minimization / closing away
+    osc.frequency.setValueAtTime(680, now);
+    osc.frequency.exponentialRampToValueAtTime(260, now + 0.13);
+
+    subOsc.frequency.setValueAtTime(450, now);
+    subOsc.frequency.exponentialRampToValueAtTime(180, now + 0.13);
 
     // Smooth soft volume envelope
     gain.gain.setValueAtTime(0.001, now);
-    gain.gain.linearRampToValueAtTime(0.12, now + 0.015);
+    gain.gain.linearRampToValueAtTime(0.16, now + 0.015);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
 
     osc.connect(gain);
+    subOsc.connect(gain);
     gain.connect(ctx.destination);
 
     osc.start(now);
+    subOsc.start(now);
     osc.stop(now + 0.16);
+    subOsc.stop(now + 0.16);
   } catch {
     // Graceful fallback
   }

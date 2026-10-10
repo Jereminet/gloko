@@ -54,6 +54,8 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
     setFocusedCountryId(null);
     setMobileHoveredId(null);
     setHoveredCountry(null);
+    setIsSearchExpanded(false);
+    setShowStatsDetail(false);
   };
   const [geoData, setGeoData] = useState<any>(null);
   const [landBounds, setLandBounds] = useState<{ minX: number; maxX: number; minY: number; maxY: number } | null>(null);
@@ -1008,22 +1010,23 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
         </div>
       )}
 
-      {/* Floating Control panel top-left containing Logo, Friends Book, and Search Bar */}
-      <div 
-        onMouseDown={(e) => e.stopPropagation()}
-        onMouseMove={(e) => e.stopPropagation()}
-        onMouseUp={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-        onTouchMove={(e) => e.stopPropagation()}
-        onTouchEnd={(e) => e.stopPropagation()}
-        onWheel={(e) => e.stopPropagation()}
-        className="absolute top-4 sm:top-6 left-4 sm:left-6 z-40 flex flex-col gap-3.5 pointer-events-auto w-64 max-w-[calc(100vw-32px)]"
-      >
-        {/* Unified Friends Book panel with integrated GLOKO logo */}
+      {/* Floating Control panel top-left containing Logo, Friends Book, and Search Bar (disappears in Live Mode) */}
+      {!isLiveMode && (
         <div 
-          ref={friendsBookRef}
-          className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/80 shadow-md select-none font-sans overflow-hidden transition-all flex flex-col w-full"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseMove={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+          className="absolute top-4 sm:top-6 left-4 sm:left-6 z-40 flex flex-col gap-3.5 pointer-events-auto w-64 max-w-[calc(100vw-32px)] animate-in fade-in zoom-in-95 duration-200"
         >
+          {/* Unified Friends Book panel with integrated GLOKO logo */}
+          <div 
+            ref={friendsBookRef}
+            className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/80 shadow-md select-none font-sans overflow-hidden transition-all flex flex-col w-full"
+          >
           {/* Integrated GLOKO Logo Block with Search Cover */}
           <div
             className="flex items-center justify-between select-none border-b border-slate-100 bg-slate-50/45 py-2 px-3 relative min-h-[46px]"
@@ -1209,9 +1212,6 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                       <Clock className="w-3 h-3 text-indigo-500" />
                       <span>Last 5 Friends Added</span>
                     </span>
-                    <span className="text-[8px] font-mono text-indigo-650 bg-indigo-50 px-1.5 py-0.5 rounded font-bold">
-                      History
-                    </span>
                   </div>
 
                   <div className="overflow-y-auto flex-grow divide-y divide-slate-100/70 p-1">
@@ -1270,7 +1270,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                             }}
                             className="w-full text-left p-2 hover:bg-slate-50/80 rounded-xl transition-colors flex items-start gap-2.5 group cursor-pointer"
                           >
-                            {/* Avatar or initial */}
+                            {/* Photo / Avatar */}
                             <div className="shrink-0 mt-0.5">
                               {friend.photoUrl ? (
                                 <img
@@ -1290,7 +1290,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                               )}
                             </div>
 
-                            {/* Info */}
+                            {/* Only Name, Date Added, and Country */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-1">
                                 <span className="font-bold text-xs text-slate-800 truncate group-hover:text-indigo-650 transition-colors">
@@ -1307,19 +1307,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                               <div className="flex items-center gap-1.5 mt-0.5 text-[10.5px] text-slate-500 font-sans">
                                 <span className="text-xs select-none leading-none">{countryFlag}</span>
                                 <span className="font-medium text-slate-700 truncate">{countryName}</span>
-                                {friend.city && (
-                                  <>
-                                    <span className="text-slate-300">•</span>
-                                    <span className="text-slate-400 truncate">📍 {friend.city}</span>
-                                  </>
-                                )}
                               </div>
-
-                              {friend.contactInfo && (
-                                <div className="text-[8.5px] text-slate-400 font-mono truncate mt-0.5">
-                                  ✉️ {friend.contactInfo}
-                                </div>
-                              )}
                             </div>
                           </button>
                         );
@@ -1332,6 +1320,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           )}
         </div>
       </div>
+      )}
 
       {/* Map Control Actions */}
       <div 
@@ -1447,6 +1436,8 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                 ? (hasLiveFriends ? (isSelected ? 2.5 / zoom : 1.8 / zoom) : 0.4 / zoom)
                 : (isSelected ? 1.8 / zoom : (isMobileHovered ? 2.8 / zoom : 0.55 / zoom));
 
+              const centroid = hasLiveFriends ? pathGenerator.centroid(feature) : null;
+
               return (
                 <g key={paddedId}>
                   {/* Crisp flat country base path */}
@@ -1467,6 +1458,33 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
                     onMouseMove={(e) => handleCountryMouseMove(e, feature)}
                     onMouseLeave={handleCountryMouseLeave}
                   />
+
+                  {/* Prominent Live Mode Radar Beacon Marker on countries with live friends */}
+                  {hasLiveFriends && centroid && !isNaN(centroid[0]) && !isNaN(centroid[1]) && (
+                    <g transform={`translate(${centroid[0]}, ${centroid[1]})`} className="pointer-events-none select-none">
+                      {/* Pulsing beacon radar wave */}
+                      <circle
+                        r={12 / zoom}
+                        fill="none"
+                        stroke="#ef4444"
+                        strokeWidth={1.5 / zoom}
+                        className="animate-ping opacity-75"
+                      />
+                      <circle
+                        r={7 / zoom}
+                        fill="#ef4444"
+                        fillOpacity={0.25}
+                        stroke="#ef4444"
+                        strokeWidth={1 / zoom}
+                      />
+                      <circle
+                        r={3.5 / zoom}
+                        fill="#ef4444"
+                        stroke="#ffffff"
+                        strokeWidth={1 / zoom}
+                      />
+                    </g>
+                  )}
                 </g>
               );
             })}
@@ -1507,7 +1525,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           onTouchStart={(e) => e.stopPropagation()}
           onTouchMove={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 pointer-events-auto flex items-center gap-2.5 sm:gap-3 bg-white/95 backdrop-blur-md text-slate-800 px-3.5 py-2 sm:px-4.5 sm:py-2.5 rounded-2xl shadow-xl border border-slate-200/90 animate-in fade-in slide-in-from-bottom-2 duration-200 select-none max-w-[calc(100vw-32px)]"
+          className="absolute bottom-20 sm:bottom-22 left-1/2 -translate-x-1/2 z-40 pointer-events-auto flex items-center gap-2.5 sm:gap-3 bg-white/95 backdrop-blur-md text-slate-800 px-3.5 py-2 sm:px-4.5 sm:py-2.5 rounded-2xl shadow-xl border border-slate-200/90 animate-in fade-in slide-in-from-bottom-2 duration-200 select-none max-w-[calc(100vw-32px)]"
         >
           <span className="text-xl sm:text-2xl select-none leading-none flex-shrink-0">
             {getCountryInfo(focusedCountryId)?.flag || '🗺️'}

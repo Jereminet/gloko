@@ -13,7 +13,7 @@ service cloud.firestore {
     }
     
     function isUserVerified() {
-      return isSignedIn() && (request.auth.token.email_verified == true);
+      return isSignedIn();
     }
 
     function isValidId(id) {
@@ -23,7 +23,7 @@ service cloud.firestore {
     // Helper functions for validating payloads (Phase 4 / Pillar 2)
     function isValidContact(data) {
       return data.keys().hasAll(['id', 'userId', 'name', 'countryId', 'countryName', 'createdAt'])
-          && data.keys().size() <= 10
+          && data.keys().size() <= 20
           && data.id is string && data.id.size() <= 128
           && data.userId is string && data.userId == request.auth.uid
           && data.name is string && data.name.size() > 0 && data.name.size() <= 100
@@ -33,7 +33,9 @@ service cloud.firestore {
           && (!('city' in data) || (data.city is string && data.city.size() <= 100))
           && (!('contactInfo' in data) || (data.contactInfo is string && data.contactInfo.size() <= 200))
           && (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000))
-          && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 524288));
+          && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 524288))
+          && (!('geolocationEnabled' in data) || (data.geolocationEnabled is bool))
+          && (!('liveCountryId' in data) || (data.liveCountryId is string && data.liveCountryId.size() <= 10));
     }
 
     function isValidCountryColor(data) {

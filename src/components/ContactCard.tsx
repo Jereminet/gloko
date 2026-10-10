@@ -96,66 +96,6 @@ export default function ContactCard({
   return (
     <>
       <div className={`bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm hover:border-indigo-200 transition-all flex flex-col gap-3 group relative text-slate-800 ${shouldShake ? 'glow-animation ring-2 ring-indigo-500 shadow-md transform' : ''}`}>
-      {/* Top Right Action & Ping Button Group */}
-      <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
-        {/* Yellow Ping Button with message sent fly animation and bell chime */}
-        {onPing && (
-          <div className="relative shrink-0">
-            <button
-              onClick={handlePingClick}
-              data-ping-button="true"
-              disabled={isPinging}
-              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 active:scale-95 rounded-full border border-amber-300 shadow-xs transition-all cursor-pointer relative shrink-0 disabled:opacity-90"
-              title="Send a travel Ping!"
-            >
-              {isPinging ? (
-                <>
-                  <Check className="h-3 w-3 stroke-[2.5] text-amber-900" />
-                  <span>Sent!</span>
-                </>
-              ) : (
-                <>
-                  <Bell className="h-3 w-3 stroke-[2.5] text-amber-900 fill-amber-900/15" />
-                  <span>Ping</span>
-                </>
-              )}
-            </button>
-
-            {/* Floating Paper Airplane / Message Burst Animation taking flight */}
-            {isPinging && (
-              <div className="absolute -top-1 -right-2 pointer-events-none z-30 animate-fly-message flex items-center gap-1 bg-amber-400 text-amber-950 font-bold px-2 py-0.5 rounded-full shadow-md border border-amber-300 text-[9px]">
-                <Send className="w-2.5 h-2.5 text-amber-950" />
-                <span>Pinged</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Action Buttons: Always visible */}
-        <div className="flex gap-1 flex-shrink-0">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(contact);
-            }}
-            className="p-1.5 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-indigo-650 hover:bg-indigo-50 hover:border-indigo-100 shadow-xs transition-all cursor-pointer flex items-center justify-center"
-            title="Edit Contact"
-          >
-            <Edit className="h-3 w-3" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(contact.id);
-            }}
-            className="p-1.5 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-red-650 hover:bg-red-50 hover:border-red-100 shadow-xs transition-all cursor-pointer flex items-center justify-center"
-            title="Delete Contact"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        </div>
-      </div>
-
       {/* Card Info Details */}
       <div className="flex gap-3.5 items-start">
         {/* Profile Avatar / Resized Photo */}
@@ -186,7 +126,7 @@ export default function ContactCard({
         )}
 
         {/* Content Details */}
-        <div className="flex-1 min-w-0 pr-16 md:pr-24">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <h4 className="font-sans font-semibold text-slate-800 text-sm truncate max-w-full">
               {contact.name}
@@ -204,9 +144,9 @@ export default function ContactCard({
           {/* Live Location Detail Line */}
           <div className="flex items-center gap-1.5 text-[11px] font-sans mt-1">
             <span className="text-slate-400 font-medium">Live Location:</span>
-            {contact.hasLinkedAccount && contact.geolocationEnabled && contact.liveCountryId ? (
+            {contact.geolocationEnabled && (contact.liveCountryId || contact.countryId) ? (
               (() => {
-                const info = getCountryInfo(contact.liveCountryId);
+                const info = getCountryInfo(contact.liveCountryId || contact.countryId);
                 return (
                   <span className="font-bold text-emerald-600 flex items-center gap-1">
                     <span className="select-none">{info?.flag}</span>
@@ -230,6 +170,68 @@ export default function ContactCard({
           {contact.notes}
         </div>
       )}
+
+      {/* Action Buttons Row: Ping, Edit, Deletion all placed on the exact same line under text and above added date */}
+      <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100/80 w-full">
+        {/* Yellow Ping Button */}
+        {onPing && (
+          <div className="relative flex-1 min-w-0">
+            <button
+              onClick={handlePingClick}
+              data-ping-button="true"
+              disabled={isPinging}
+              className="w-full flex items-center justify-center gap-1 py-1.5 px-2 text-[11px] font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 active:scale-95 rounded-xl border border-amber-300 shadow-2xs transition-all cursor-pointer relative disabled:opacity-90"
+              title="Send a travel Ping!"
+            >
+              {isPinging ? (
+                <>
+                  <Check className="h-3.5 w-3.5 stroke-[2.5] text-amber-900 shrink-0" />
+                  <span className="truncate">Sent!</span>
+                </>
+              ) : (
+                <>
+                  <Bell className="h-3.5 w-3.5 stroke-[2.5] text-amber-900 fill-amber-900/15 shrink-0" />
+                  <span className="truncate">Ping</span>
+                </>
+              )}
+            </button>
+
+            {/* Floating Paper Airplane / Message Burst Animation */}
+            {isPinging && (
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 pointer-events-none z-30 animate-fly-message flex items-center gap-1 bg-amber-400 text-amber-950 font-bold px-2 py-0.5 rounded-full shadow-md border border-amber-300 text-[9px] whitespace-nowrap">
+                <Send className="w-2.5 h-2.5 text-amber-950" />
+                <span>Pinged</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Edit Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(contact);
+          }}
+          className="flex-1 min-w-0 flex items-center justify-center gap-1 py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 hover:text-indigo-650 hover:bg-indigo-50 hover:border-indigo-200 shadow-2xs transition-all cursor-pointer text-[11px] font-semibold"
+          title="Edit Contact"
+        >
+          <Edit className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+          <span className="truncate">Edit</span>
+        </button>
+
+        {/* Deletion Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(contact.id);
+          }}
+          className="flex-1 min-w-0 flex items-center justify-center gap-1 py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 hover:text-red-650 hover:bg-red-50 hover:border-red-200 shadow-2xs transition-all cursor-pointer text-[11px] font-semibold"
+          title="Delete Contact"
+        >
+          <Trash2 className="h-3.5 w-3.5 shrink-0 text-red-500" />
+          <span className="truncate">Delete</span>
+        </button>
+      </div>
 
       {/* Date Met */}
       <div className="flex items-center justify-between text-[9px] text-slate-400 font-sans border-t border-slate-100 pt-2 pb-0.5 mt-auto">
