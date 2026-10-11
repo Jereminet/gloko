@@ -12,8 +12,10 @@ export interface Contact {
   // Account Simulation Fields for Fixed vs Live Modes
   hasLinkedAccount?: boolean;
   homeCountryId?: string;
+  originalCountryId?: string;
   geolocationEnabled?: boolean;
   liveCountryId?: string;
+  friendUserId?: string;
 }
 
 export interface CountryData {

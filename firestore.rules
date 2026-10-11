@@ -35,7 +35,10 @@ service cloud.firestore {
           && (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000))
           && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 524288))
           && (!('geolocationEnabled' in data) || (data.geolocationEnabled is bool))
-          && (!('liveCountryId' in data) || (data.liveCountryId is string && data.liveCountryId.size() <= 10));
+          && (!('liveCountryId' in data) || (data.liveCountryId is string && data.liveCountryId.size() <= 10))
+          && (!('homeCountryId' in data) || (data.homeCountryId is string && data.homeCountryId.size() <= 10))
+          && (!('originalCountryId' in data) || (data.originalCountryId is string && data.originalCountryId.size() <= 10))
+          && (!('friendUserId' in data) || (data.friendUserId is string && data.friendUserId.size() <= 128));
     }
 
     function isValidCountryColor(data) {
@@ -48,8 +51,10 @@ service cloud.firestore {
 
     function isValidUserProfileSettings(data) {
       return data.keys().hasAll(['homeCountryId', 'geolocationEnabled', 'updatedAt'])
-          && data.keys().size() == 3
+          && data.keys().size() <= 6
           && data.homeCountryId is string && data.homeCountryId.size() <= 10
+          && (!('liveCountryId' in data) || (data.liveCountryId is string && data.liveCountryId.size() <= 10))
+          && (!('originalCountryId' in data) || (data.originalCountryId is string && data.originalCountryId.size() <= 10))
           && data.geolocationEnabled is bool
           && data.updatedAt is string && data.updatedAt.size() <= 100;
     }
@@ -68,13 +73,14 @@ service cloud.firestore {
 
     function isValidFriendActivity(data) {
       return data.keys().hasAll(['id', 'fromUserId', 'fromUserName', 'countryId', 'type', 'createdAt'])
-          && data.keys().size() <= 11
+          && data.keys().size() <= 14
           && data.id is string && data.id.size() <= 128
           && data.fromUserId is string && data.fromUserId == request.auth.uid
           && data.fromUserName is string && data.fromUserName.size() <= 100
           && data.countryId is string && data.countryId.size() <= 10
           && data.type is string && (data.type == 'added' || data.type == 'deleted')
           && data.createdAt is string && data.createdAt.size() <= 100
+          && (!('toFriendUserId' in data) || (data.toFriendUserId is string && data.toFriendUserId.size() <= 128))
           && (!('toUserEmail' in data) || (data.toUserEmail is string && data.toUserEmail.size() <= 150))
           && (!('city' in data) || (data.city is string && data.city.size() <= 100))
           && (!('contactInfo' in data) || (data.contactInfo is string && data.contactInfo.size() <= 200))

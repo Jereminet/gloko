@@ -141,23 +141,7 @@ export default function ContactCard({
             </div>
           )}
 
-          {/* Live Location Detail Line */}
-          <div className="flex items-center gap-1.5 text-[11px] font-sans mt-1">
-            <span className="text-slate-400 font-medium">Live Location:</span>
-            {contact.geolocationEnabled && (contact.liveCountryId || contact.countryId) ? (
-              (() => {
-                const info = getCountryInfo(contact.liveCountryId || contact.countryId);
-                return (
-                  <span className="font-bold text-emerald-600 flex items-center gap-1">
-                    <span className="select-none">{info?.flag}</span>
-                    <span>{info?.name || 'Unknown'}</span>
-                  </span>
-                );
-              })()
-            ) : (
-              <span className="text-slate-400 italic">unknown</span>
-            )}
-          </div>
+
 
           {/* Contact field detail */}
           {contact.contactInfo && renderContactInfo(contact.contactInfo)}

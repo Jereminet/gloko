@@ -14,6 +14,7 @@ export interface FriendActivityInfo {
   notes?: string;
   // If deletion: the matching contact ID in user's book to remove
   existingContactId?: string;
+  friendUserId?: string;
 }
 
 interface FriendActivityModalProps {

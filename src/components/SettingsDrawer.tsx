@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Download, Trash2, LogOut, Settings, ShieldAlert, Globe, ArrowRight, Sparkles, QrCode, UserPlus, UserMinus } from 'lucide-react';
+import { X, Download, Trash2, LogOut, Settings, ShieldAlert, Globe, ArrowRight, Sparkles, QrCode, UserPlus, UserMinus, Navigation } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { Contact } from '../types';
 import { AppLanguage, TRANSLATIONS } from '../utils/translations';
@@ -23,7 +23,10 @@ interface SettingsDrawerProps {
   onSimulateIncomingAdd?: () => void;
   onSimulateIncomingDelete?: () => void;
   userHomeCountryId?: string;
+  userLiveCountryId?: string;
   geolocationEnabled?: boolean;
+  onToggleGeolocation?: (enabled: boolean) => void;
+  onOpenProfileSetup?: () => void;
 }
 
 export default function SettingsDrawer({
@@ -43,7 +46,10 @@ export default function SettingsDrawer({
   onSimulateIncomingAdd,
   onSimulateIncomingDelete,
   userHomeCountryId,
+  userLiveCountryId,
   geolocationEnabled,
+  onToggleGeolocation,
+  onOpenProfileSetup,
 }: SettingsDrawerProps) {
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
 
@@ -148,7 +154,7 @@ export default function SettingsDrawer({
                       <div className="flex items-center justify-between">
                         <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
                           <Globe className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Home Region:</span>
+                          <span>Origin Country:</span>
                         </span>
                         {(() => {
                           const info = userHomeCountryId ? getCountryInfo(userHomeCountryId) : undefined;
@@ -167,10 +173,53 @@ export default function SettingsDrawer({
                           </span>
                           <span>GPS Geolocation:</span>
                         </span>
-                        <span className={`font-bold text-[10.5px] px-2 py-0.5 rounded-lg ${geolocationEnabled ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-slate-100'}`}>
-                          {geolocationEnabled ? 'Enabled' : 'Disabled'}
-                        </span>
+                        {onToggleGeolocation ? (
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={geolocationEnabled}
+                              onChange={(e) => onToggleGeolocation(e.target.checked)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-600"></div>
+                          </label>
+                        ) : (
+                          <span className={`font-bold text-[10.5px] px-2 py-0.5 rounded-lg ${geolocationEnabled ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-slate-100'}`}>
+                            {geolocationEnabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        )}
                       </div>
+
+                      {geolocationEnabled && userLiveCountryId && (
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
+                            <Navigation className="w-3.5 h-3.5" />
+                            <span>Live Location:</span>
+                          </span>
+                          {(() => {
+                            const info = getCountryInfo(userLiveCountryId);
+                            return (
+                              <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-lg text-[10.5px] flex items-center gap-1">
+                                <span>{info ? `${info.flag} ${info.name}` : 'Unknown'}</span>
+                                <span className="text-[9px] text-emerald-600 font-semibold">(GPS)</span>
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {onOpenProfileSetup && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onOpenProfileSetup();
+                            onClose();
+                          }}
+                          className="w-full mt-1 py-1.5 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer text-center"
+                        >
+                          Change Origin Country
+                        </button>
+                      )}
                     </div>
 
                     {/* Logout Trigger Button (No harsh black backgrounds) */}

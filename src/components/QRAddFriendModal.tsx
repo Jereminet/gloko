@@ -17,32 +17,69 @@ import {
 import jsQR from 'jsqr';
 import { COUNTRY_LIST } from '../data/countries';
 import { playBellSound, playBubbleSound } from '../utils/audio';
+import { safeStorage } from '../utils/storage';
+
+function safeBtoa(str: string): string {
+  try {
+    return btoa(unescape(encodeURIComponent(str)));
+  } catch {
+    return btoa(str);
+  }
+}
+
+function safeAtob(str: string): string {
+  try {
+    return decodeURIComponent(escape(atob(str)));
+  } catch {
+    try {
+      return atob(str);
+    } catch {
+      return str;
+    }
+  }
+}
+
+function getOrCreateLocalUserId(): string {
+  let uid = safeStorage.getItem('gloko_device_uid');
+  if (!uid) {
+    uid = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    safeStorage.setItem('gloko_device_uid', uid);
+  }
+  return uid;
+}
 
 interface ScannedFriendData {
   name: string;
-  countryId: string;
+  countryId: string; // Original Country
+  originalCountryId?: string;
+  homeCountryId?: string;
   countryName?: string;
   city?: string;
   contact?: string;
   notes?: string;
   geolocationEnabled?: boolean;
   liveCountryId?: string;
+  friendUserId?: string;
 }
 
 interface QRAddFriendModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: any; // User profile
-  homeCountryId: string;
+  homeCountryId: string; // Fixed Original Country
+  liveCountryId?: string; // Current Live Geolocation
   userGeolocationEnabled?: boolean;
   onAddFriendFromQR: (friendData: {
     name: string;
     countryId: string;
-    city: string;
-    contact: string;
-    notes: string;
+    originalCountryId?: string;
+    homeCountryId?: string;
+    city?: string;
+    contact?: string;
+    notes?: string;
     geolocationEnabled?: boolean;
     liveCountryId?: string;
+    friendUserId?: string;
   }) => void;
 }
 
@@ -51,6 +88,7 @@ export default function QRAddFriendModal({
   onClose,
   currentUser,
   homeCountryId,
+  liveCountryId,
   userGeolocationEnabled,
   onAddFriendFromQR,
 }: QRAddFriendModalProps) {
@@ -95,63 +133,95 @@ export default function QRAddFriendModal({
     setCameraLoading(false);
   }, []);
 
+
   // Parse raw scanned text or decoded QR string
   const parseQRContent = useCallback((raw: string): ScannedFriendData | null => {
-    const text = raw.trim();
+    let text = raw.trim();
     if (!text) return null;
 
-    // 1. Try Base64 encoded JSON
-    try {
-      const decoded = atob(text);
-      const parsed = JSON.parse(decoded);
-      if (parsed && (parsed.name || parsed.countryId)) {
-        return {
-          name: parsed.name || 'Friend',
-          countryId: (parsed.countryId || '840').toString(),
-          city: parsed.city || '',
-          contact: parsed.contact || '',
-          notes: parsed.notes || 'Added via GLOKO QR Share Code',
-          geolocationEnabled: parsed.geolocationEnabled !== undefined ? parsed.geolocationEnabled : true,
-          liveCountryId: parsed.liveCountryId || parsed.countryId || '840',
-        };
-      }
-    } catch {}
+    // Remove possible outer quotes or URL prefixes
+    if (text.startsWith('"') && text.endsWith('"')) {
+      text = text.slice(1, -1).trim();
+    }
 
-    // 2. Try raw JSON
+    // 1. If text is a full URL with query parameters (e.g. ?data=... or ?code=...)
     try {
-      const parsed = JSON.parse(text);
-      if (parsed && (parsed.name || parsed.countryId)) {
-        return {
-          name: parsed.name || 'Friend',
-          countryId: (parsed.countryId || '840').toString(),
-          city: parsed.city || '',
-          contact: parsed.contact || '',
-          notes: parsed.notes || 'Added via GLOKO QR Share Code',
-          geolocationEnabled: parsed.geolocationEnabled !== undefined ? parsed.geolocationEnabled : true,
-          liveCountryId: parsed.liveCountryId || parsed.countryId || '840',
-        };
-      }
-    } catch {}
-
-    // 3. Try URL with parameters (e.g. ?data=... or ?name=...)
-    try {
-      if (text.startsWith('http') || text.includes('?')) {
-        const url = new URL(text);
-        const dataParam = url.searchParams.get('data') || url.searchParams.get('code');
-        if (dataParam) {
-          return parseQRContent(dataParam);
+      if (text.startsWith('http') || text.includes('?') || text.includes('&')) {
+        let queryString = text;
+        if (text.includes('?')) {
+          queryString = text.split('?')[1];
         }
-        const nameParam = url.searchParams.get('name');
-        const countryParam = url.searchParams.get('country') || url.searchParams.get('countryId');
+        const params = new URLSearchParams(queryString);
+        const dataParam = params.get('data') || params.get('code');
+        if (dataParam) {
+          const nested = parseQRContent(dataParam);
+          if (nested) return nested;
+        }
+        const nameParam = params.get('name');
+        const countryParam = params.get('country') || params.get('countryId') || params.get('originalCountryId');
+        const liveParam = params.get('liveCountry') || params.get('liveCountryId');
         if (nameParam || countryParam) {
+          const origCountryId = String(countryParam || '840').padStart(3, '0');
           return {
             name: nameParam || 'Friend',
-            countryId: (countryParam || '840').toString(),
-            city: url.searchParams.get('city') || '',
-            contact: url.searchParams.get('contact') || '',
-            notes: 'Scanned from URL',
+            countryId: origCountryId,
+            originalCountryId: origCountryId,
+            homeCountryId: origCountryId,
+            city: '',
+            contact: params.get('contact') || params.get('email') || '',
+            notes: 'Scanned via URL',
             geolocationEnabled: true,
-            liveCountryId: (countryParam || '840').toString(),
+            liveCountryId: String(liveParam || origCountryId).padStart(3, '0'),
+            friendUserId: params.get('userId') || params.get('uid') || '',
+          };
+        }
+      }
+    } catch {}
+
+    // 2. Try Base64 encoded JSON
+    try {
+      // Strip any whitespace or URL percent encoding if present
+      const cleanB64 = decodeURIComponent(text).replace(/\s+/g, '');
+      const decoded = safeAtob(cleanB64);
+      if (decoded.startsWith('{') && decoded.endsWith('}')) {
+        const parsed = JSON.parse(decoded);
+        if (parsed && (parsed.name || parsed.countryId || parsed.originalCountryId || parsed.userId)) {
+          const origCountryId = String(parsed.originalCountryId || parsed.homeCountryId || parsed.countryId || '840').padStart(3, '0');
+          const liveCtryId = String(parsed.liveCountryId || parsed.countryId || origCountryId).padStart(3, '0');
+          return {
+            name: parsed.name || 'Friend',
+            countryId: origCountryId,
+            originalCountryId: origCountryId,
+            homeCountryId: origCountryId,
+            city: '',
+            contact: parsed.contact || parsed.email || '',
+            notes: parsed.notes || 'Added via GLOKO QR Share Code',
+            geolocationEnabled: parsed.geolocationEnabled !== undefined ? Boolean(parsed.geolocationEnabled) : true,
+            liveCountryId: liveCtryId,
+            friendUserId: parsed.userId || parsed.friendUserId || '',
+          };
+        }
+      }
+    } catch {}
+
+    // 3. Try direct raw JSON string
+    try {
+      if (text.startsWith('{') && text.endsWith('}')) {
+        const parsed = JSON.parse(text);
+        if (parsed && (parsed.name || parsed.countryId || parsed.originalCountryId || parsed.userId)) {
+          const origCountryId = String(parsed.originalCountryId || parsed.homeCountryId || parsed.countryId || '840').padStart(3, '0');
+          const liveCtryId = String(parsed.liveCountryId || parsed.countryId || origCountryId).padStart(3, '0');
+          return {
+            name: parsed.name || 'Friend',
+            countryId: origCountryId,
+            originalCountryId: origCountryId,
+            homeCountryId: origCountryId,
+            city: '',
+            contact: parsed.contact || parsed.email || '',
+            notes: parsed.notes || 'Added via GLOKO QR Share Code',
+            geolocationEnabled: parsed.geolocationEnabled !== undefined ? Boolean(parsed.geolocationEnabled) : true,
+            liveCountryId: liveCtryId,
+            friendUserId: parsed.userId || parsed.friendUserId || '',
           };
         }
       }
@@ -161,8 +231,8 @@ export default function QRAddFriendModal({
     const lines = text.split('\n');
     let name = '';
     let countryId = '840';
-    let city = '';
     let contact = '';
+    let friendUserId = '';
 
     for (const line of lines) {
       const [k, ...v] = line.split(':');
@@ -171,8 +241,8 @@ export default function QRAddFriendModal({
         const val = v.join(':').trim();
         if (key.includes('name')) name = val;
         else if (key.includes('country')) countryId = val;
-        else if (key.includes('city')) city = val;
         else if (key.includes('contact') || key.includes('email') || key.includes('phone')) contact = val;
+        else if (key.includes('user') || key.includes('uid') || key === 'id') friendUserId = val;
       }
     }
 
@@ -180,11 +250,12 @@ export default function QRAddFriendModal({
       return {
         name: name || text.slice(0, 30),
         countryId: countryId || '840',
-        city,
+        city: '',
         contact,
         notes: 'Scanned from QR code',
         geolocationEnabled: true,
         liveCountryId: countryId || '840',
+        friendUserId,
       };
     }
 
@@ -209,32 +280,29 @@ export default function QRAddFriendModal({
     }
   }, [parseQRContent, stopCameraStream]);
 
-  // Real-time camera scanning loop
+  const lastScanTimestampRef = useRef<number>(0);
+  const barcodeDetectorInstanceRef = useRef<any>(null);
+
+  // Real-time camera scanning loop with frame rate throttling & optimal canvas scaling
   const startScanningLoop = useCallback(() => {
-    const checkFrame = () => {
+    const checkFrame = (now: number) => {
       const video = videoRef.current;
       if (!video || video.readyState !== video.HAVE_ENOUGH_DATA) {
         scanLoopRef.current = requestAnimationFrame(checkFrame);
         return;
       }
 
-      // Prepare off-screen canvas for frame capture
-      if (!canvasRef.current) {
-        canvasRef.current = document.createElement('canvas');
-      }
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      // Throttle scanning to every 120ms to prevent CPU saturation and ensure fluid decoding
+      if (now - lastScanTimestampRef.current >= 120) {
+        lastScanTimestampRef.current = now;
 
-      if (ctx) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        // First attempt native BarcodeDetector if available
+        // 1. Try native BarcodeDetector if available
         if ('BarcodeDetector' in window && typeof (window as any).BarcodeDetector === 'function') {
           try {
-            const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
-            detector
+            if (!barcodeDetectorInstanceRef.current) {
+              barcodeDetectorInstanceRef.current = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+            }
+            barcodeDetectorInstanceRef.current
               .detect(video)
               .then((barcodes: any[]) => {
                 if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
@@ -246,18 +314,46 @@ export default function QRAddFriendModal({
           } catch {}
         }
 
-        // jsQR fallback (rock-solid on iOS Safari & all WebKit / Android browsers)
-        try {
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: 'dontInvert',
-          });
+        // 2. jsQR fallback with scaled canvas (max 640px for blazing speed & optimal noise filtration)
+        if (!canvasRef.current) {
+          canvasRef.current = document.createElement('canvas');
+        }
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-          if (qrCode && qrCode.data) {
-            handleQRDetected(qrCode.data);
-            return;
+        if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
+          const maxDim = 640;
+          let w = video.videoWidth;
+          let h = video.videoHeight;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
           }
-        } catch {}
+
+          if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
+          }
+
+          ctx.drawImage(video, 0, 0, w, h);
+
+          try {
+            const imageData = ctx.getImageData(0, 0, w, h);
+            const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: 'attemptBoth',
+            });
+
+            if (qrCode && qrCode.data) {
+              handleQRDetected(qrCode.data);
+              return;
+            }
+          } catch {}
+        }
       }
 
       scanLoopRef.current = requestAnimationFrame(checkFrame);
@@ -393,18 +489,23 @@ export default function QRAddFriendModal({
   if (!isOpen) return null;
 
   // Prepare profile JSON data for the QR code share payload
-  const homeCountry = COUNTRY_LIST.find((c) => c.id === homeCountryId) || COUNTRY_LIST.find((c) => c.id === '840');
+  const originalCountry = COUNTRY_LIST.find((c) => c.id === homeCountryId) || COUNTRY_LIST.find((c) => c.id === '818') || COUNTRY_LIST[0];
+  const currentLiveCountry = COUNTRY_LIST.find((c) => c.id === (liveCountryId || homeCountryId)) || originalCountry;
+
   const myProfileData = {
+    userId: currentUser?.uid || getOrCreateLocalUserId(),
     name: currentUser?.displayName || currentUser?.email?.split('@')[0] || 'GLOKO Friend',
-    countryId: homeCountry?.id || '840',
-    city: homeCountry?.continent || 'World Citizen',
+    countryId: originalCountry.id, // Fixed Original Country (Normal Mode)
+    originalCountryId: originalCountry.id,
+    homeCountryId: originalCountry.id,
+    liveCountryId: currentLiveCountry.id, // Live Geolocation (Live Mode)
+    geolocationEnabled: userGeolocationEnabled ?? true,
+    city: '', // Card is created without a city
     contact: currentUser?.email || 'hello@gloko.app',
     notes: 'Added via GLOKO QR Share Code',
-    geolocationEnabled: userGeolocationEnabled ?? true,
-    liveCountryId: homeCountry?.id || '840',
   };
 
-  const rawShareString = btoa(JSON.stringify(myProfileData));
+  const rawShareString = safeBtoa(JSON.stringify(myProfileData));
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(rawShareString)}`;
 
   const handleCopyCode = () => {
@@ -442,12 +543,15 @@ export default function QRAddFriendModal({
       playBellSound();
       onAddFriendFromQR({
         name: scanResult.name,
-        countryId: scanResult.countryId,
-        city: scanResult.city || '',
+        countryId: scanResult.countryId, // Saved to ORIGINAL COUNTRY
+        originalCountryId: scanResult.originalCountryId || scanResult.countryId,
+        homeCountryId: scanResult.homeCountryId || scanResult.countryId,
+        city: '', // Created without a city
         contact: scanResult.contact || '',
         notes: scanResult.notes || '',
         geolocationEnabled: scanResult.geolocationEnabled !== undefined ? scanResult.geolocationEnabled : true,
         liveCountryId: scanResult.liveCountryId || scanResult.countryId,
+        friendUserId: scanResult.friendUserId || '',
       });
       stopCameraStream();
       onClose();
@@ -548,6 +652,20 @@ export default function QRAddFriendModal({
                 />
               </div>
 
+              {/* User Profile Summary Badges */}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/60 flex items-center gap-1">
+                  <span>🏠 Origin:</span>
+                  <span>{originalCountry.flag} {originalCountry.name}</span>
+                </span>
+                {userGeolocationEnabled && currentLiveCountry.id !== originalCountry.id && (
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Live GPS: {currentLiveCountry.flag} {currentLiveCountry.name}</span>
+                  </span>
+                )}
+              </div>
+
               {/* Share Code Copy section */}
               <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
@@ -586,26 +704,46 @@ export default function QRAddFriendModal({
                     </button>
                   </div>
 
-                  <div className="flex items-start gap-3 bg-white p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
-                    <div className="w-11 h-11 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg select-none shrink-0 shadow-2xs">
-                      {scanResult.name.trim().charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-bold text-slate-900 truncate">{scanResult.name}</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-                        <span className="text-sm select-none">{foundCountry?.flag || '🌍'}</span>
-                        <span className="font-semibold text-slate-700">{foundCountry?.name || 'Unknown Country'}</span>
-                        {scanResult.city && <span>• {scanResult.city}</span>}
-                      </p>
-                      {scanResult.contact && (
-                        <p className="text-[10px] text-indigo-650 font-mono mt-1 truncate">{scanResult.contact}</p>
-                      )}
-                      <div className="flex items-center gap-1 mt-1.5 text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-semibold border border-emerald-200/60 w-fit">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        <span>Live Geolocation Active</span>
+                  {(() => {
+                    const origCountry = COUNTRY_LIST.find((c) => c.id === scanResult.countryId) || COUNTRY_LIST[0];
+                    const liveCountry = scanResult.liveCountryId
+                      ? COUNTRY_LIST.find((c) => c.id === scanResult.liveCountryId) || origCountry
+                      : origCountry;
+
+                    return (
+                      <div className="flex items-start gap-3 bg-white p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
+                        <div className="w-11 h-11 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg select-none shrink-0 shadow-2xs">
+                          {scanResult.name.trim().charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <h4 className="text-sm font-bold text-slate-900 truncate">{scanResult.name}</h4>
+
+                          <div className="flex flex-col gap-1 text-[11px]">
+                            <div className="flex items-center gap-1.5 text-slate-700">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Original Country:</span>
+                              <span className="font-semibold">{origCountry.flag} {origCountry.name}</span>
+                              <span className="text-[9px] text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded font-bold">Normal Mode</span>
+                            </div>
+
+                            {scanResult.geolocationEnabled && liveCountry.id !== origCountry.id && (
+                              <div className="flex items-center gap-1.5 text-emerald-800">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Live Geolocation:</span>
+                                <span className="font-semibold">{liveCountry.flag} {liveCountry.name}</span>
+                                <span className="text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-bold flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  Live Mode
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {scanResult.contact && (
+                            <p className="text-[10px] text-indigo-650 font-mono pt-0.5 truncate">{scanResult.contact}</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   <button
                     onClick={handleAddScannedFriend}

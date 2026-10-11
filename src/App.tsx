@@ -56,7 +56,10 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showQRConnect, setShowQRConnect] = useState(false);
   const [userHomeCountryId, setUserHomeCountryId] = useState<string>(() => {
-    return safeStorage.getItem('gloko_user_country_id') || '840';
+    return safeStorage.getItem('gloko_user_country_id') || '818';
+  });
+  const [userLiveCountryId, setUserLiveCountryId] = useState<string>(() => {
+    return safeStorage.getItem('gloko_user_live_country_id') || '076';
   });
   const [geolocationEnabled, setGeolocationEnabled] = useState<boolean>(() => {
     return safeStorage.getItem('gloko_geolocation_enabled') === 'true';
@@ -201,10 +204,10 @@ export default function App() {
           // Ignore own activities
           if (!data || data.fromUserId === user.uid) return;
 
-          // Ignore activities created before current session started
+          // Ignore activities created more than 10 minutes ago
           if (data.createdAt) {
             const createdAtTime = new Date(data.createdAt).getTime();
-            if (!isNaN(createdAtTime) && createdAtTime < sessionStartTimeRef.current - 5000) {
+            if (!isNaN(createdAtTime) && Date.now() - createdAtTime > 10 * 60 * 1000) {
               return;
             }
           }
@@ -214,7 +217,8 @@ export default function App() {
           if (data.type === 'added') {
             // Check if this friend is already in our contacts book
             const alreadyFriend = contactsRef.current.some(
-              (c) => c.name.toLowerCase() === friendNameLower
+              (c) => (c.friendUserId && data.fromUserId && c.friendUserId === data.fromUserId) ||
+                     c.name.trim().toLowerCase() === friendNameLower
             );
             if (!alreadyFriend) {
               setPendingFriendActivity({
@@ -225,36 +229,52 @@ export default function App() {
                 city: data.city || '',
                 contactInfo: data.contactInfo || '',
                 notes: data.notes || 'Added you via GLOKO Network',
+                friendUserId: data.fromUserId || '',
               });
             }
           } else if (data.type === 'deleted') {
-            // A mutual friend has removed their connection - notify the user and allow mutual removal
+            // A mutual friend has removed their connection - notify this user and allow reciprocal removal
+            // 1. If this deletion specifically targeted a user ID, verify it was meant for this account
+            if (data.toFriendUserId && user && data.toFriendUserId !== user.uid) {
+              return;
+            }
+            if (
+              data.toUserEmail &&
+              user?.email &&
+              !data.toFriendUserId &&
+              data.toUserEmail.trim().toLowerCase() !== user.email.trim().toLowerCase()
+            ) {
+              return;
+            }
+
+            // 2. Identify which contact in this user's book is the friend who removed the connection
+            const deleterUid = data.fromUserId;
+            const deleterName = friendNameLower;
+            const deleterContact = (data.contactInfo || '').trim().toLowerCase();
+
             const existing = contactsRef.current.find((c) => {
-              const nameMatch = c.name.trim().toLowerCase() === friendNameLower;
-              const contactMatch = Boolean(
-                data.contactInfo && c.contactInfo && c.contactInfo.trim().toLowerCase() === data.contactInfo.trim().toLowerCase()
-              );
-              const noteMatch = Boolean(
-                data.notes && c.name.trim().toLowerCase() === data.notes.trim().toLowerCase()
-              );
-              return nameMatch || contactMatch || noteMatch;
+              if (c.friendUserId && deleterUid && c.friendUserId === deleterUid) {
+                return true;
+              }
+              if (c.contactInfo && deleterContact && c.contactInfo.trim().toLowerCase() === deleterContact) {
+                return true;
+              }
+              if (deleterName && c.name.trim().toLowerCase() === deleterName) {
+                return true;
+              }
+              return false;
             });
 
             if (existing) {
-              const existingAddedTime = existing.createdAt ? new Date(existing.createdAt).getTime() : 0;
-              const activityCreatedTime = data.createdAt ? new Date(data.createdAt).getTime() : Date.now();
-
-              // Only trigger if deletion occurred after friendship was established
-              if (!existingAddedTime || activityCreatedTime >= existingAddedTime - 5000) {
-                setPendingFriendActivity({
-                  type: 'deleted',
-                  friendName: existing.name || data.fromUserName || 'Friend',
-                  countryId: existing.countryId,
-                  countryName: existing.countryName,
-                  city: existing.city,
-                  existingContactId: existing.id,
-                });
-              }
+              setPendingFriendActivity({
+                type: 'deleted',
+                friendName: existing.name || data.fromUserName || 'Friend',
+                countryId: existing.countryId,
+                countryName: existing.countryName,
+                city: existing.city,
+                existingContactId: existing.id,
+                friendUserId: deleterUid || '',
+              });
             }
           }
         }
@@ -266,11 +286,13 @@ export default function App() {
   }, [user]);
 
   // Finish onboarding handler
-  const handleOnboardingComplete = async (countryId: string, enableGeolocation: boolean) => {
+  const handleOnboardingComplete = async (countryId: string, enableGeolocation: boolean, liveCountryId: string) => {
     safeStorage.setItem('gloko_onboarding_completed', 'true');
     safeStorage.setItem('gloko_user_country_id', countryId);
+    safeStorage.setItem('gloko_user_live_country_id', liveCountryId);
     safeStorage.setItem('gloko_geolocation_enabled', String(enableGeolocation));
     setUserHomeCountryId(countryId);
+    setUserLiveCountryId(liveCountryId);
     setGeolocationEnabled(enableGeolocation);
     setShowOnboarding(false);
 
@@ -278,6 +300,7 @@ export default function App() {
       try {
         await setDoc(doc(db, 'users', user.uid, 'settings', 'profile'), {
           homeCountryId: countryId,
+          liveCountryId: liveCountryId,
           geolocationEnabled: enableGeolocation,
           updatedAt: new Date().toISOString()
         });
@@ -288,7 +311,25 @@ export default function App() {
 
     const country = COUNTRY_LIST.find(c => c.id === countryId);
     if (country) {
-      showNotification(`📍 Home country set to ${country.flag} ${country.name}!`, 'success');
+      showNotification(`📍 Original country set to ${country.flag} ${country.name}!`, 'success');
+    }
+  };
+
+  // Toggle Geolocation (strictly enable or disable, not manual location editing)
+  const handleToggleGeolocation = async (enabled: boolean) => {
+    setGeolocationEnabled(enabled);
+    safeStorage.setItem('gloko_geolocation_enabled', String(enabled));
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'settings', 'profile'), {
+          homeCountryId: userHomeCountryId,
+          liveCountryId: userLiveCountryId,
+          geolocationEnabled: enabled,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}/settings/profile`);
+      }
     }
   };
 
@@ -332,11 +373,14 @@ export default function App() {
   const handleAddFriendFromQR = async (friendData: {
     name: string;
     countryId: string;
-    city: string;
-    contact: string;
-    notes: string;
+    originalCountryId?: string;
+    homeCountryId?: string;
+    city?: string;
+    contact?: string;
+    notes?: string;
     geolocationEnabled?: boolean;
     liveCountryId?: string;
+    friendUserId?: string;
   }) => {
     // Record as recently added friend to prevent any false deletion popup
     recentlyAddedFriendNamesRef.current.add(friendData.name.trim().toLowerCase());
@@ -344,16 +388,22 @@ export default function App() {
       setPendingFriendActivity(null);
     }
 
-    const country = COUNTRY_LIST.find(c => c.id === friendData.countryId);
+    const origId = String(friendData.originalCountryId || friendData.homeCountryId || friendData.countryId || '840').padStart(3, '0');
+    const liveId = String(friendData.liveCountryId || origId).padStart(3, '0');
+    const country = COUNTRY_LIST.find(c => c.id === origId);
+
     await handleAddContact({
       name: friendData.name,
-      countryId: friendData.countryId,
+      countryId: origId, // Pin permanently to original country!
       countryName: country?.name || 'Unknown',
-      city: friendData.city,
-      contactInfo: friendData.contact,
-      notes: friendData.notes,
+      homeCountryId: origId,
+      originalCountryId: origId,
+      liveCountryId: liveId,
       geolocationEnabled: friendData.geolocationEnabled !== undefined ? friendData.geolocationEnabled : true,
-      liveCountryId: friendData.liveCountryId || friendData.countryId,
+      friendUserId: friendData.friendUserId || '',
+      city: '', // Card created without a city when added via QR code
+      contactInfo: friendData.contact || '',
+      notes: friendData.notes || 'Added via GLOKO QR Share Code',
     });
     showNotification(`💖 Successfully added ${friendData.name} as a friend!`, 'success');
   };
@@ -367,6 +417,7 @@ export default function App() {
       countryName: country?.name || activity.countryName || 'Global',
       city: activity.city || '',
       contactInfo: activity.contactInfo || '',
+      friendUserId: activity.friendUserId || '',
       notes: activity.notes || 'Added back via GLOKO mutual friend link',
     });
     showNotification(`🤝 Added ${activity.friendName} back to your travel book!`, 'success');
@@ -376,7 +427,7 @@ export default function App() {
   const handleRemoveBackFriend = async (contactId: string) => {
     const friend = contacts.find((c) => c.id === contactId);
     const friendName = friend?.name || 'Friend';
-    await handleDeleteContact(contactId);
+    await executeDeleteContact(contactId, false);
     showNotification(`🗑️ Removed ${friendName} from your travel book.`, 'info');
   };
 
@@ -556,6 +607,10 @@ export default function App() {
           setUserHomeCountryId(data.homeCountryId);
           safeStorage.setItem('gloko_user_country_id', data.homeCountryId);
         }
+        if (data.liveCountryId) {
+          setUserLiveCountryId(data.liveCountryId);
+          safeStorage.setItem('gloko_user_live_country_id', data.liveCountryId);
+        }
         if (data.geolocationEnabled !== undefined) {
           setGeolocationEnabled(data.geolocationEnabled);
           safeStorage.setItem('gloko_geolocation_enabled', String(data.geolocationEnabled));
@@ -652,6 +707,9 @@ export default function App() {
       createdAt,
       geolocationEnabled: Boolean(contactData.geolocationEnabled ?? true),
       liveCountryId: String(contactData.liveCountryId || paddedCountryId).padStart(3, '0'),
+      homeCountryId: String(contactData.homeCountryId || paddedCountryId).padStart(3, '0'),
+      originalCountryId: String(contactData.originalCountryId || paddedCountryId).padStart(3, '0'),
+      friendUserId: contactData.friendUserId ? String(contactData.friendUserId).slice(0, 128) : undefined,
       photoUrl: contactData.photoUrl ? String(contactData.photoUrl).slice(0, 524288) : undefined,
     };
 
@@ -677,6 +735,15 @@ export default function App() {
         geolocationEnabled: newContact.geolocationEnabled,
         liveCountryId: newContact.liveCountryId,
       };
+      if (newContact.homeCountryId) {
+        cleanContact.homeCountryId = newContact.homeCountryId;
+      }
+      if (newContact.originalCountryId) {
+        cleanContact.originalCountryId = newContact.originalCountryId;
+      }
+      if (newContact.friendUserId) {
+        cleanContact.friendUserId = newContact.friendUserId;
+      }
       if (newContact.photoUrl) {
         cleanContact.photoUrl = newContact.photoUrl;
       }
@@ -690,7 +757,7 @@ export default function App() {
       // Broadcast addition activity safely
       try {
         const activityId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        await setDoc(doc(db, 'friend_activities', activityId), {
+        const addPayload: Record<string, any> = {
           id: activityId,
           fromUserId: user.uid,
           fromUserName: user.displayName || user.email?.split('@')[0] || 'GLOKO Friend',
@@ -700,7 +767,14 @@ export default function App() {
           city: safeContact.city || '',
           contactInfo: user.email || '',
           createdAt: new Date().toISOString(),
-        });
+        };
+        if (safeContact.friendUserId) {
+          addPayload.toFriendUserId = safeContact.friendUserId.slice(0, 128);
+        }
+        if (safeContact.contactInfo && safeContact.contactInfo.includes('@')) {
+          addPayload.toUserEmail = safeContact.contactInfo.slice(0, 150);
+        }
+        await setDoc(doc(db, 'friend_activities', activityId), addPayload);
       } catch {
         // Non-critical broadcast
       }
@@ -727,79 +801,92 @@ export default function App() {
     }
   };
 
-  // Delete Contact
-  const handleDeleteContact = (id: string) => {
-    // Determine the country ID of the contact being deleted prior to deletion
+  // Execute deletion of a contact document and clean up colors & activities
+  const executeDeleteContact = async (id: string, broadcastDeletion: boolean = true) => {
     const contactToDelete = contacts.find((c) => c.id === id);
     const countryId = contactToDelete?.countryId ? contactToDelete.countryId.padStart(3, '0') : null;
 
+    // Immediately update UI contacts state optimistically
+    const updatedContacts = contacts.filter((c) => c.id !== id);
+    setContacts(updatedContacts);
+    saveAndSyncContacts(updatedContacts);
+
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'contacts', id));
+        // Broadcast deletion activity so mutual friend connections can receive the removal pop-up
+        if (broadcastDeletion) {
+          const activityId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+          const deleterName = user.displayName || user.email?.split('@')[0] || 'GLOKO Friend';
+          const deletionPayload: Record<string, any> = {
+            id: activityId,
+            fromUserId: user.uid,
+            fromUserName: deleterName.slice(0, 100),
+            countryId: String(countryId || '840').padStart(3, '0'),
+            countryName: String(contactToDelete?.countryName || 'Global').slice(0, 100),
+            type: 'deleted',
+            createdAt: new Date().toISOString(),
+          };
+          if (contactToDelete?.friendUserId) {
+            deletionPayload.toFriendUserId = contactToDelete.friendUserId.slice(0, 128);
+          }
+          if (contactToDelete?.name) {
+            deletionPayload.notes = contactToDelete.name.slice(0, 500);
+          }
+          if (contactToDelete?.contactInfo && contactToDelete.contactInfo.includes('@')) {
+            deletionPayload.toUserEmail = contactToDelete.contactInfo.slice(0, 150);
+          }
+          if (user.email) {
+            deletionPayload.contactInfo = user.email.slice(0, 200);
+          }
+          await setDoc(doc(db, 'friend_activities', activityId), deletionPayload);
+        }
+
+        // Reset color in Firestore if this was the last friend in that country
+        if (countryId) {
+          const otherCountryFriends = updatedContacts.filter(
+            (c) => c.countryId.padStart(3, '0') === countryId
+          );
+          if (otherCountryFriends.length === 0) {
+            const colorDocRef = doc(db, 'users', user.uid, 'colors', countryId);
+            await deleteDoc(colorDocRef);
+          }
+        }
+      } catch (e) {
+        handleFirestoreError(e, OperationType.DELETE, `contacts/${id}`);
+      }
+    } else {
+      // Guest mode - reset color in local storage if this was the last friend in that country
+      if (countryId) {
+        const otherCountryFriends = updatedContacts.filter(
+          (c) => c.countryId.padStart(3, '0') === countryId
+        );
+        if (otherCountryFriends.length === 0) {
+          const updatedColors = { ...countryColors };
+          delete updatedColors[countryId];
+          setCountryColors(updatedColors);
+          try {
+            safeStorage.setItem('travel_contacts_map_country_colors', JSON.stringify(updatedColors));
+          } catch (e) {
+            console.error('Failed to save updated colors after filter:', e);
+          }
+        }
+      }
+    }
+  };
+
+  // Delete Contact with User Confirmation Modal
+  const handleDeleteContact = (id: string) => {
     setConfirmConfig({
       isOpen: true,
       title: 'Remove Friend',
-      message: 'Are you sure you want to remove this friend? Doing so will permanently remove their records from your travel map.',
+      message: 'Are you sure you want to remove this friend? Doing so will remove their records from your travel map.',
       confirmLabel: 'Delete',
       isDestructive: true,
       onConfirm: async () => {
-        if (user) {
-          try {
-            await deleteDoc(doc(db, 'contacts', id));
-            // Broadcast deletion activity so mutual friend connections can receive the removal pop-up
-            const activityId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-            const deleterName = user.displayName || user.email?.split('@')[0] || 'GLOKO Friend';
-            const deletionPayload: Record<string, any> = {
-              id: activityId,
-              fromUserId: user.uid,
-              fromUserName: deleterName.slice(0, 100),
-              countryId: String(countryId || '840').padStart(3, '0'),
-              countryName: String(contactToDelete?.countryName || 'Global').slice(0, 100),
-              type: 'deleted',
-              createdAt: new Date().toISOString(),
-            };
-            if (contactToDelete?.name) {
-              deletionPayload.notes = contactToDelete.name.slice(0, 500);
-            }
-            if (contactToDelete?.contactInfo && contactToDelete.contactInfo.includes('@')) {
-              deletionPayload.toUserEmail = contactToDelete.contactInfo.slice(0, 150);
-            }
-            if (user.email) {
-              deletionPayload.contactInfo = user.email.slice(0, 200);
-            }
-            await setDoc(doc(db, 'friend_activities', activityId), deletionPayload);
-            // Reset color in Firestore if this was the last friend in that country
-            if (countryId) {
-              const otherCountryFriends = contacts.filter(
-                (c) => c.countryId.padStart(3, '0') === countryId && c.id !== id
-              );
-              if (otherCountryFriends.length === 0) {
-                const colorDocRef = doc(db, 'users', user.uid, 'colors', countryId);
-                await deleteDoc(colorDocRef);
-              }
-            }
-          } catch (e) {
-            handleFirestoreError(e, OperationType.DELETE, `contacts/${id}`);
-          }
-        } else {
-          const updated = contacts.filter((c) => c.id !== id);
-          saveAndSyncContacts(updated);
-          // Reset color in local storage if this was the last friend in that country
-          if (countryId) {
-            const otherCountryFriends = updated.filter(
-              (c) => c.countryId.padStart(3, '0') === countryId
-            );
-            if (otherCountryFriends.length === 0) {
-              const updatedColors = { ...countryColors };
-              delete updatedColors[countryId];
-              setCountryColors(updatedColors);
-              try {
-                safeStorage.setItem('travel_contacts_map_country_colors', JSON.stringify(updatedColors));
-              } catch (e) {
-                console.error('Failed to save updated colors after filter:', e);
-              }
-            }
-          }
-        }
+        await executeDeleteContact(id, true);
         setConfirmConfig(null);
-      }
+      },
     });
   };
 
@@ -1027,7 +1114,10 @@ export default function App() {
         onSimulateIncomingAdd={handleSimulateIncomingAdd}
         onSimulateIncomingDelete={handleSimulateIncomingDelete}
         userHomeCountryId={userHomeCountryId}
+        userLiveCountryId={userLiveCountryId}
         geolocationEnabled={geolocationEnabled}
+        onToggleGeolocation={handleToggleGeolocation}
+        onOpenProfileSetup={() => setShowOnboarding(true)}
       />
 
       {/* Interactive Guide Tour Slides Deck Walkthrough Modal */}
@@ -1151,6 +1241,9 @@ export default function App() {
         {showOnboarding && (
           <OnboardingModal
             isOpen={showOnboarding}
+            initialHomeCountryId={userHomeCountryId}
+            initialGeolocationEnabled={geolocationEnabled}
+            initialLiveCountryId={userLiveCountryId}
             onComplete={handleOnboardingComplete}
           />
         )}
@@ -1167,6 +1260,7 @@ export default function App() {
             }}
             currentUser={user}
             homeCountryId={userHomeCountryId}
+            liveCountryId={userLiveCountryId}
             userGeolocationEnabled={geolocationEnabled}
             onAddFriendFromQR={handleAddFriendFromQR}
           />
