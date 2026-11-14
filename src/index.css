@@ -8,6 +8,17 @@
   --font-fancy: "Paytone One", sans-serif;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 /* Custom scrollbar adjustments for premium touch */
 ::-webkit-scrollbar {
   width: 6px;

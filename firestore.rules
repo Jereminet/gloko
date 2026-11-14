@@ -51,10 +51,11 @@ service cloud.firestore {
 
     function isValidUserProfileSettings(data) {
       return data.keys().hasAll(['homeCountryId', 'geolocationEnabled', 'updatedAt'])
-          && data.keys().size() <= 6
+          && data.keys().size() <= 8
           && data.homeCountryId is string && data.homeCountryId.size() <= 10
           && (!('liveCountryId' in data) || (data.liveCountryId is string && data.liveCountryId.size() <= 10))
           && (!('originalCountryId' in data) || (data.originalCountryId is string && data.originalCountryId.size() <= 10))
+          && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 524288))
           && data.geolocationEnabled is bool
           && data.updatedAt is string && data.updatedAt.size() <= 100;
     }
@@ -86,6 +87,23 @@ service cloud.firestore {
           && (!('contactInfo' in data) || (data.contactInfo is string && data.contactInfo.size() <= 200))
           && (!('countryName' in data) || (data.countryName is string && data.countryName.size() <= 100))
           && (!('notes' in data) || (data.notes is string && data.notes.size() <= 500));
+    }
+
+    function isValidLiveLocation(data) {
+      return data.keys().hasAll(['userId', 'liveCountryId', 'geolocationEnabled', 'updatedAt'])
+          && data.keys().hasOnly(['userId', 'liveCountryId', 'geolocationEnabled', 'updatedAt'])
+          && data.userId is string && data.userId == request.auth.uid && data.userId.size() <= 128
+          && data.liveCountryId is string && data.liveCountryId.size() > 0 && data.liveCountryId.size() <= 10
+          && data.geolocationEnabled is bool
+          && data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    function isValidPublicProfile(data) {
+      return data.keys().hasAll(['userId', 'photoUrl', 'updatedAt'])
+          && data.keys().hasOnly(['userId', 'photoUrl', 'updatedAt'])
+          && data.userId is string && data.userId == request.auth.uid && data.userId.size() <= 128
+          && data.photoUrl is string && data.photoUrl.size() <= 524288
+          && data.updatedAt is string && data.updatedAt.size() <= 100;
     }
 
 
@@ -142,6 +160,30 @@ service cloud.firestore {
       allow list: if isSignedIn();
       allow create: if isUserVerified() && isValidId(activityId) && isValidFriendActivity(request.resource.data);
       allow update, delete: if false;
+    }
+
+    // Non-PII live country status per user (allows friends with friendUserId to get real-time live country updates)
+    match /live_locations/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if false;
+      allow create: if isUserVerified() && isValidId(userId) && userId == request.auth.uid
+                    && isValidLiveLocation(request.resource.data);
+      allow update: if isUserVerified() && isValidId(userId) && userId == request.auth.uid
+                    && isValidLiveLocation(request.resource.data)
+                    && request.resource.data.userId == resource.data.userId;
+      allow delete: if isUserVerified() && isValidId(userId) && userId == request.auth.uid;
+    }
+
+    // Non-PII public avatar per user (used by default when adding a friend via QR code)
+    match /public_profiles/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if false;
+      allow create: if isUserVerified() && isValidId(userId) && userId == request.auth.uid
+                    && isValidPublicProfile(request.resource.data);
+      allow update: if isUserVerified() && isValidId(userId) && userId == request.auth.uid
+                    && isValidPublicProfile(request.resource.data)
+                    && request.resource.data.userId == resource.data.userId;
+      allow delete: if isUserVerified() && isValidId(userId) && userId == request.auth.uid;
     }
   }
 }

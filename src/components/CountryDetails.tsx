@@ -154,6 +154,7 @@ export default function CountryDetails({
   };
 
   const handleEditClick = (contact: Contact) => {
+    if (isLiveMode) return;
     setEditingContact(contact);
     setIsFormOpen(true);
   };
@@ -165,12 +166,13 @@ export default function CountryDetails({
     setIsFormOpen(true);
   };
 
-  // Close creation form if live mode becomes active
+  // Close form if live mode becomes active
   useEffect(() => {
-    if (isLiveMode && isFormOpen && !editingContact) {
+    if (isLiveMode && isFormOpen) {
       setIsFormOpen(false);
+      setEditingContact(null);
     }
-  }, [isLiveMode, isFormOpen, editingContact]);
+  }, [isLiveMode, isFormOpen]);
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden min-h-[400px] text-slate-800">
@@ -437,6 +439,7 @@ export default function CountryDetails({
                       onDelete={onDeleteContact}
                       onPing={onPing}
                       shouldShake={shakeFriendId === contact.id}
+                      isLiveMode={isLiveMode}
                     />
                   ))
                 ) : (

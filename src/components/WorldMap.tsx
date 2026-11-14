@@ -171,6 +171,8 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [showStatsDetail, setShowStatsDetail] = useState(false);
   const friendsBookRef = useRef<HTMLDivElement>(null);
+  const historyScrollRef = useRef<HTMLDivElement>(null);
+  const searchScrollRef = useRef<HTMLDivElement>(null);
 
   // Close Friends Book panel if clicked outside
   useEffect(() => {
@@ -194,6 +196,68 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
       document.removeEventListener('touchstart', handleTouchOutside);
     };
   }, []);
+
+  // Block mobile window scroll gestures when dragging on the non-scrollable Friends Book / History menu
+  useEffect(() => {
+    const panelEl = friendsBookRef.current;
+    if (!panelEl) return;
+
+    let lastTouchY = 0;
+
+    const handlePanelTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        lastTouchY = e.touches[0].clientY;
+      }
+    };
+
+    const handlePanelTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      const currentY = e.touches[0].clientY;
+      const deltaY = currentY - lastTouchY;
+      lastTouchY = currentY;
+
+      const target = e.target as Node | null;
+      const historyEl = historyScrollRef.current;
+      const searchEl = searchScrollRef.current;
+
+      const activeScrollEl =
+        historyEl && target && historyEl.contains(target)
+          ? historyEl
+          : searchEl && target && searchEl.contains(target)
+            ? searchEl
+            : null;
+
+      // Always block gesture when touching non-scrollable header/menu or when menu fits without scroll
+      if (!activeScrollEl || activeScrollEl.scrollHeight <= activeScrollEl.clientHeight + 1) {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      // If scrollable (e.g. long search results), block overscroll chaining at top/bottom bounds
+      const atTop = activeScrollEl.scrollTop <= 0 && deltaY > 0;
+      const atBottom =
+        activeScrollEl.scrollTop + activeScrollEl.clientHeight >= activeScrollEl.scrollHeight - 1 && deltaY < 0;
+
+      if (atTop || atBottom) {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    panelEl.addEventListener('touchstart', handlePanelTouchStart, { passive: true });
+    panelEl.addEventListener('touchmove', handlePanelTouchMove, { passive: false });
+
+    return () => {
+      panelEl.removeEventListener('touchstart', handlePanelTouchStart);
+      panelEl.removeEventListener('touchmove', handlePanelTouchMove);
+    };
+  }, [isLiveMode, showStatsDetail, isSearchExpanded]);
 
   // Hover state for tooltip
   const [hoveredCountry, setHoveredCountry] = useState<{
@@ -421,8 +485,22 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           // Convert TopoJSON to GeoJSON
           const countriesGeo = feature(data, data.objects.countries) as any;
 
-          // Save complete deep copy of original unmutated features for clean isPointOnLand geo contains check
-          if (countriesGeo && countriesGeo.features) {
+          // Ensure territories without numeric ISO IDs in world-atlas still have stable IDs & proper names
+          if (countriesGeo && Array.isArray(countriesGeo.features)) {
+            const syntheticIdsByName: Record<string, string> = {
+              'Kosovo': 'XKX',
+              'N. Cyprus': 'XNC',
+              'Somaliland': 'XSO',
+            };
+            countriesGeo.features.forEach((feat: any) => {
+              if ((feat.id === undefined || feat.id === null || feat.id === '') && feat.properties?.name) {
+                const mappedId = syntheticIdsByName[feat.properties.name];
+                if (mappedId) {
+                  feat.id = mappedId;
+                }
+              }
+            });
+            // Save complete deep copy of original unmutated features for clean isPointOnLand geo contains check
             rawFeaturesRef.current = JSON.parse(JSON.stringify(countriesGeo.features));
           }
 
@@ -1025,7 +1103,7 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
           {/* Unified Friends Book panel with integrated GLOKO logo */}
           <div 
             ref={friendsBookRef}
-            className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/80 shadow-md select-none font-sans overflow-hidden transition-all flex flex-col w-full"
+            className={`bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/80 shadow-md select-none font-sans overflow-hidden transition-all flex flex-col w-full overscroll-none ${!isSearchExpanded ? 'touch-none' : ''}`}
           >
           {/* Integrated GLOKO Logo Block with Search Cover */}
           <div
@@ -1094,8 +1172,8 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
           {/* Search results shown inline directly inside the book body when search is active */}
           {isSearchExpanded && (
-            <div className="border-t border-slate-100 flex flex-col w-full max-h-[300px] sm:max-h-[360px] bg-white animate-in fade-in duration-150 overflow-hidden">
-              <div className="overflow-y-auto flex-grow divide-y divide-slate-100/60 p-1">
+            <div className="border-t border-slate-100 flex flex-col w-full max-h-[300px] sm:max-h-[360px] bg-white animate-in fade-in duration-150 overflow-hidden overscroll-none">
+              <div ref={searchScrollRef} className="overflow-y-auto overscroll-contain flex-grow divide-y divide-slate-100/60 p-1">
                 {!searchQuery.trim() ? null : (
                   <>
                     {filteredCountries.length > 0 && (
@@ -1206,8 +1284,8 @@ const WorldMap = forwardRef<any, WorldMapProps>(({
 
               {/* Inline Expanded Friends Book: History of last 5 friends added with corresponding date */}
               {showStatsDetail && (
-                <div className="border-t border-slate-100 flex flex-col w-full max-h-[290px] sm:max-h-[350px] bg-white animate-in fade-in slide-in-from-top-1 duration-150">
-                  <div className="overflow-y-auto flex-grow divide-y divide-slate-100/70 p-1">
+                <div className="border-t border-slate-100 flex flex-col w-full max-h-[290px] sm:max-h-[350px] bg-white animate-in fade-in slide-in-from-top-1 duration-150 overscroll-none touch-none">
+                  <div ref={historyScrollRef} className="overflow-y-auto overscroll-none touch-none flex-grow divide-y divide-slate-100/70 p-1">
                     {(() => {
                       const recentHistory = [...contacts]
                         .sort((a, b) => {

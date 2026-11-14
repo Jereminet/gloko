@@ -15,9 +15,14 @@ import {
   Sparkles,
 } from 'lucide-react';
 import jsQR from 'jsqr';
+import { doc, getDoc } from 'firebase/firestore';
+import { db, OperationType, handleFirestoreError } from '../firebase';
 import { COUNTRY_LIST } from '../data/countries';
 import { playBellSound, playBubbleSound } from '../utils/audio';
 import { safeStorage } from '../utils/storage';
+
+const isValidFirestoreId = (id?: string): id is string =>
+  typeof id === 'string' && id.length > 0 && id.length <= 128 && /^[a-zA-Z0-9_-]+$/.test(id);
 
 function safeBtoa(str: string): string {
   try {
@@ -60,6 +65,7 @@ interface ScannedFriendData {
   geolocationEnabled?: boolean;
   liveCountryId?: string;
   friendUserId?: string;
+  photoUrl?: string;
 }
 
 interface QRAddFriendModalProps {
@@ -69,6 +75,7 @@ interface QRAddFriendModalProps {
   homeCountryId: string; // Fixed Original Country
   liveCountryId?: string; // Current Live Geolocation
   userGeolocationEnabled?: boolean;
+  userPhotoUrl?: string;
   onAddFriendFromQR: (friendData: {
     name: string;
     countryId: string;
@@ -80,6 +87,7 @@ interface QRAddFriendModalProps {
     geolocationEnabled?: boolean;
     liveCountryId?: string;
     friendUserId?: string;
+    photoUrl?: string;
   }) => void;
 }
 
@@ -90,6 +98,7 @@ export default function QRAddFriendModal({
   homeCountryId,
   liveCountryId,
   userGeolocationEnabled,
+  userPhotoUrl,
   onAddFriendFromQR,
 }: QRAddFriendModalProps) {
   const [activeTab, setActiveTab] = useState<'my-qr' | 'scan'>('scan');
@@ -199,6 +208,7 @@ export default function QRAddFriendModal({
             geolocationEnabled: parsed.geolocationEnabled !== undefined ? Boolean(parsed.geolocationEnabled) : true,
             liveCountryId: liveCtryId,
             friendUserId: parsed.userId || parsed.friendUserId || '',
+            photoUrl: typeof parsed.photoUrl === 'string' ? parsed.photoUrl : '',
           };
         }
       }
@@ -222,6 +232,7 @@ export default function QRAddFriendModal({
             geolocationEnabled: parsed.geolocationEnabled !== undefined ? Boolean(parsed.geolocationEnabled) : true,
             liveCountryId: liveCtryId,
             friendUserId: parsed.userId || parsed.friendUserId || '',
+            photoUrl: typeof parsed.photoUrl === 'string' ? parsed.photoUrl : '',
           };
         }
       }
@@ -486,11 +497,42 @@ export default function QRAddFriendModal({
     }
   }, [isOpen, activeTab, stopCameraStream]);
 
+  // Fetch scanned friend's profile picture from /public_profiles/{friendUserId} if signed in
+  useEffect(() => {
+    const friendUid = scanResult?.friendUserId;
+    if (!isOpen || !currentUser || !isValidFirestoreId(friendUid)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'public_profiles', friendUid));
+        if (!cancelled && snap.exists()) {
+          const remotePhoto = snap.data()?.photoUrl;
+          if (typeof remotePhoto === 'string' && remotePhoto) {
+            setScanResult((prev) =>
+              prev && prev.friendUserId === friendUid ? { ...prev, photoUrl: remotePhoto } : prev
+            );
+          }
+        }
+      } catch (e) {
+        handleFirestoreError(e, OperationType.GET, `public_profiles/${friendUid}`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, currentUser, scanResult?.friendUserId]);
+
   if (!isOpen) return null;
 
   // Prepare profile JSON data for the QR code share payload
   const originalCountry = COUNTRY_LIST.find((c) => c.id === homeCountryId) || COUNTRY_LIST.find((c) => c.id === '818') || COUNTRY_LIST[0];
   const currentLiveCountry = COUNTRY_LIST.find((c) => c.id === (liveCountryId || homeCountryId)) || originalCountry;
+
+  const effectiveMyPhoto = userPhotoUrl || currentUser?.photoURL || '';
+  const shortPublicPhotoUrl =
+    effectiveMyPhoto && effectiveMyPhoto.startsWith('http') && effectiveMyPhoto.length <= 240
+      ? effectiveMyPhoto
+      : undefined;
 
   const myProfileData = {
     userId: currentUser?.uid || getOrCreateLocalUserId(),
@@ -503,6 +545,7 @@ export default function QRAddFriendModal({
     city: '', // Card is created without a city
     contact: currentUser?.email || 'hello@gloko.app',
     notes: 'Added via GLOKO QR Share Code',
+    ...(shortPublicPhotoUrl ? { photoUrl: shortPublicPhotoUrl } : {}),
   };
 
   const rawShareString = safeBtoa(JSON.stringify(myProfileData));
@@ -552,6 +595,7 @@ export default function QRAddFriendModal({
         geolocationEnabled: scanResult.geolocationEnabled !== undefined ? scanResult.geolocationEnabled : true,
         liveCountryId: scanResult.liveCountryId || scanResult.countryId,
         friendUserId: scanResult.friendUserId || '',
+        photoUrl: scanResult.photoUrl || '',
       });
       stopCameraStream();
       onClose();
@@ -654,6 +698,17 @@ export default function QRAddFriendModal({
 
               {/* User Profile Summary Badges */}
               <div className="flex flex-wrap items-center justify-center gap-2">
+                {effectiveMyPhoto && (
+                  <span className="text-[10px] font-bold text-slate-700 bg-slate-100 pl-1 pr-2.5 py-0.5 rounded-full border border-slate-200/60 flex items-center gap-1.5">
+                    <img
+                      src={effectiveMyPhoto}
+                      alt="My profile"
+                      referrerPolicy="no-referrer"
+                      className="w-5 h-5 rounded-full object-cover border border-white"
+                    />
+                    <span className="truncate max-w-[120px]">{myProfileData.name}</span>
+                  </span>
+                )}
                 <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/60 flex items-center gap-1">
                   <span>🏠 Origin:</span>
                   <span>{originalCountry.flag} {originalCountry.name}</span>
@@ -712,9 +767,18 @@ export default function QRAddFriendModal({
 
                     return (
                       <div className="flex items-start gap-3 bg-white p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
-                        <div className="w-11 h-11 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg select-none shrink-0 shadow-2xs">
-                          {scanResult.name.trim().charAt(0).toUpperCase()}
-                        </div>
+                        {scanResult.photoUrl ? (
+                          <img
+                            src={scanResult.photoUrl}
+                            alt={scanResult.name}
+                            referrerPolicy="no-referrer"
+                            className="w-11 h-11 rounded-full object-cover border border-indigo-100 shrink-0 shadow-2xs"
+                          />
+                        ) : (
+                          <div className="w-11 h-11 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg select-none shrink-0 shadow-2xs">
+                            {scanResult.name.trim().charAt(0).toUpperCase()}
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0 space-y-1">
                           <h4 className="text-sm font-bold text-slate-900 truncate">{scanResult.name}</h4>
 

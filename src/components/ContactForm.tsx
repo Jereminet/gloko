@@ -80,8 +80,8 @@ export default function ContactForm({
         throw new Error('Please upload an image file (png, jpg, jpeg).');
       }
 
-      // Convert and resize dynamically
-      const resizedBase64 = await resizeImage(file, 200);
+      // Convert and resize dynamically at high resolution
+      const resizedBase64 = await resizeImage(file, 1080);
       setPhotoUrl(resizedBase64);
     } catch (err: any) {
       setError(err?.message || 'Error processing image.');
@@ -106,7 +106,7 @@ export default function ContactForm({
       if (!file.type.match(/image\/*/)) {
         throw new Error('Please upload an image file (png, jpg, jpeg).');
       }
-      const resizedBase64 = await resizeImage(file, 200);
+      const resizedBase64 = await resizeImage(file, 1080);
       setPhotoUrl(resizedBase64);
     } catch (err: any) {
       setError(err?.message || 'Error processing dropped image.');
@@ -127,20 +127,27 @@ export default function ContactForm({
     setError(null);
 
     try {
+      const permanentCountryId = editingContact
+        ? String(editingContact.originalCountryId || editingContact.homeCountryId || countryId).padStart(3, '0')
+        : String(countryId).padStart(3, '0');
+      const permanentCountryName = getCountryInfo(permanentCountryId)?.name || countryName;
+
       await onSave({
         ...(editingContact ? { id: editingContact.id, createdAt: editingContact.createdAt } : {}),
         name: name.trim(),
-        countryId,
-        countryName,
+        countryId: permanentCountryId,
+        countryName: permanentCountryName,
         city: city.trim() || '',
         contactInfo: contactInfo.trim() || '',
         notes: notes.trim() || '',
         photoUrl: photoUrl || undefined,
-        // Simulation parameters
+        // Account link & fixed/live fields
         hasLinkedAccount,
-        homeCountryId,
+        homeCountryId: hasLinkedAccount ? homeCountryId : permanentCountryId,
+        originalCountryId: editingContact?.originalCountryId || permanentCountryId,
         geolocationEnabled,
         liveCountryId,
+        ...(editingContact?.friendUserId ? { friendUserId: editingContact.friendUserId } : {}),
       });
     } catch (err: any) {
       setError(err?.message || 'Error saving. Please try again.');
@@ -344,17 +351,17 @@ export default function ContactForm({
                   </label>
                 </div>
                 {geolocationEnabled ? (
-                  <select
-                    value={liveCountryId}
-                    onChange={(e) => setLiveCountryId(e.target.value)}
-                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer text-slate-800"
-                  >
-                    {COUNTRY_LIST.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.flag} {c.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="w-full text-xs p-2 bg-slate-100/80 border border-slate-200 rounded-xl text-slate-700 font-medium flex items-center justify-between gap-2 select-none">
+                    <span className="truncate">
+                      {(() => {
+                        const liveInfo = getCountryInfo(liveCountryId);
+                        return liveInfo ? `${liveInfo.flag} ${liveInfo.name}` : 'Automatic GPS Location';
+                      })()}
+                    </span>
+                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded shrink-0">
+                      GPS
+                    </span>
+                  </div>
                 ) : (
                   <div className="text-[10px] text-slate-400 italic py-2 px-1">
                     Using home/manual location

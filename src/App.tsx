@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Contact } from './types';
 import WorldMap from './components/WorldMap';
@@ -14,11 +14,15 @@ import confetti from 'canvas-confetti';
 import { Globe, RefreshCw, Trash2, Heart, Download, Settings, Bell, MapPin, Navigation } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db, googleProvider, signInWithPopup, signOut, OperationType, handleFirestoreError } from './firebase';
-import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDocs, getDoc } from 'firebase/firestore';
 import { AppLanguage, TRANSLATIONS } from './utils/translations';
 import { getCountryInfo, COUNTRY_LIST } from './data/countries';
 import { safeStorage } from './utils/storage';
 import { playBubbleSound, playMinimizeSound, unlockAudioContext } from './utils/audio';
+import { getLiveCountryFromDeviceGPS, getGeolocationPermissionState } from './utils/geolocation';
+
+const isValidFirestoreId = (id?: string): id is string =>
+  typeof id === 'string' && id.length > 0 && id.length <= 128 && /^[a-zA-Z0-9_-]+$/.test(id);
 
 const LOCAL_STORAGE_KEY = 'travel_contacts_map_journal';
 
@@ -64,14 +68,111 @@ export default function App() {
   const [geolocationEnabled, setGeolocationEnabled] = useState<boolean>(() => {
     return safeStorage.getItem('gloko_geolocation_enabled') === 'true';
   });
+  const [userPhotoUrl, setUserPhotoUrl] = useState<string>('');
+  const [isProfileChecked, setIsProfileChecked] = useState<boolean>(false);
   const [isLiveMode, setIsLiveMode] = useState(false);
   const [pendingFriendActivity, setPendingFriendActivity] = useState<FriendActivityInfo | null>(null);
+  const [friendLiveLocations, setFriendLiveLocations] = useState<
+    Record<string, { liveCountryId: string; geolocationEnabled: boolean }>
+  >({});
 
-  // Refs for stable activity handling without false re-triggering
+  // Refs for stable activity and geolocation handling without false re-triggering
   const sessionStartTimeRef = useRef<number>(Date.now());
   const contactsRef = useRef<Contact[]>(contacts);
   contactsRef.current = contacts;
   const recentlyAddedFriendNamesRef = useRef<Set<string>>(new Set());
+  const geolocationEnabledRef = useRef<boolean>(geolocationEnabled);
+  geolocationEnabledRef.current = geolocationEnabled;
+  const userHomeCountryIdRef = useRef<string>(userHomeCountryId);
+  userHomeCountryIdRef.current = userHomeCountryId;
+  const userLiveCountryIdRef = useRef<string>(userLiveCountryId);
+  userLiveCountryIdRef.current = userLiveCountryId;
+  const userPhotoUrlRef = useRef<string>(userPhotoUrl);
+  userPhotoUrlRef.current = userPhotoUrl;
+  const lastGpsRefreshTimeRef = useRef<number>(0);
+  const hasRefreshedOnOpenRef = useRef<boolean>(false);
+  const hasPublishedInitialLiveRef = useRef<boolean>(false);
+  const hasPublishedInitialProfileRef = useRef<boolean>(false);
+  const isRefreshingGpsRef = useRef<boolean>(false);
+
+  const publishPublicProfile = useCallback(async (uid: string, photoUrl: string) => {
+    if (!isValidFirestoreId(uid)) return;
+    const safePhoto = String(photoUrl || '').slice(0, 524288);
+    try {
+      await setDoc(doc(db, 'public_profiles', uid), {
+        userId: uid,
+        photoUrl: safePhoto,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `public_profiles/${uid}`);
+    }
+  }, []);
+
+  const publishLiveLocation = useCallback(async (uid: string, liveId: string, enabled: boolean) => {
+    if (!isValidFirestoreId(uid)) return;
+    const paddedLiveId = String(liveId || userHomeCountryIdRef.current || '818').padStart(3, '0').slice(0, 10);
+    try {
+      await setDoc(doc(db, 'live_locations', uid), {
+        userId: uid,
+        liveCountryId: paddedLiveId,
+        geolocationEnabled: Boolean(enabled),
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `live_locations/${uid}`);
+    }
+  }, []);
+
+  const refreshDeviceGeolocation = useCallback(
+    async (force: boolean = true, onlyIfGranted: boolean = false) => {
+      if (isRefreshingGpsRef.current) return;
+      isRefreshingGpsRef.current = true;
+      try {
+        if (onlyIfGranted) {
+          const permState = await getGeolocationPermissionState();
+          const grantedFlag = safeStorage.getItem('gloko_geo_permission_granted') === 'true';
+          if (permState === 'denied' || permState === 'prompt') {
+            return;
+          }
+          if (permState === 'unknown' && !grantedFlag) {
+            return;
+          }
+        }
+
+        const result = await getLiveCountryFromDeviceGPS(force);
+        if (result && result.countryId) {
+          const freshLiveId = String(result.countryId).padStart(3, '0').slice(0, 10);
+          lastGpsRefreshTimeRef.current = Date.now();
+          setUserLiveCountryId(freshLiveId);
+          safeStorage.setItem('gloko_user_live_country_id', freshLiveId);
+
+          const currentUser = auth.currentUser;
+          if (currentUser && geolocationEnabledRef.current) {
+            const nowIso = new Date().toISOString();
+            try {
+              await setDoc(
+                doc(db, 'users', currentUser.uid, 'settings', 'profile'),
+                {
+                  homeCountryId: userHomeCountryIdRef.current,
+                  liveCountryId: freshLiveId,
+                  geolocationEnabled: true,
+                  updatedAt: nowIso,
+                },
+                { merge: true }
+              );
+            } catch (e) {
+              handleFirestoreError(e, OperationType.WRITE, `users/${currentUser.uid}/settings/profile`);
+            }
+            await publishLiveLocation(currentUser.uid, freshLiveId, true);
+          }
+        }
+      } finally {
+        isRefreshingGpsRef.current = false;
+      }
+    },
+    [publishLiveLocation]
+  );
 
   // Play subtle bubble sound on button clicks, or minimizing sound on window exits (works seamlessly on desktop & mobile)
   useEffect(() => {
@@ -137,9 +238,76 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setIsAuthLoading(false);
+      if (currentUser) {
+        const cachedPhoto = safeStorage.getItem(`gloko_user_photo_url_${currentUser.uid}`);
+        setUserPhotoUrl(cachedPhoto || currentUser.photoURL || '');
+      } else {
+        setUserPhotoUrl('');
+        setIsProfileChecked(false);
+        hasRefreshedOnOpenRef.current = false;
+        hasPublishedInitialLiveRef.current = false;
+        hasPublishedInitialProfileRef.current = false;
+      }
     });
     return () => unsubscribe();
-  }, [user]);
+  }, []);
+
+  // Silently refresh device geolocation on every app open once location access has been granted
+  useEffect(() => {
+    if (isAuthLoading || !user || !geolocationEnabled) return;
+    if (!hasRefreshedOnOpenRef.current) {
+      hasRefreshedOnOpenRef.current = true;
+      refreshDeviceGeolocation(true, true);
+    }
+  }, [user, isAuthLoading, geolocationEnabled, refreshDeviceGeolocation]);
+
+  // Re-fetch fresh device geolocation whenever returning to/reopening the mobile app (only if permission already granted)
+  useEffect(() => {
+    if (!user) return;
+    const handleAppReopen = () => {
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      if (!geolocationEnabledRef.current) return;
+      if (Date.now() - lastGpsRefreshTimeRef.current < 3000) return;
+      refreshDeviceGeolocation(true, true);
+    };
+
+    document.addEventListener('visibilitychange', handleAppReopen);
+    window.addEventListener('pageshow', handleAppReopen);
+
+    // Watch browser geolocation permission changes so granting permission immediately triggers an update
+    let permissionStatus: PermissionStatus | null = null;
+    const handlePermissionChange = () => {
+      if (!permissionStatus) return;
+      if (permissionStatus.state === 'granted') {
+        safeStorage.setItem('gloko_geo_permission_granted', 'true');
+        if (geolocationEnabledRef.current) {
+          refreshDeviceGeolocation(true, true);
+        }
+      } else if (permissionStatus.state === 'denied') {
+        safeStorage.removeItem('gloko_geo_permission_granted');
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'geolocation' as PermissionName })
+        .then((status) => {
+          permissionStatus = status;
+          status.addEventListener?.('change', handlePermissionChange);
+        })
+        .catch(() => {
+          // Permissions API unavailable
+        });
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleAppReopen);
+      window.removeEventListener('pageshow', handleAppReopen);
+      if (permissionStatus) {
+        permissionStatus.removeEventListener?.('change', handlePermissionChange);
+      }
+    };
+  }, [user, refreshDeviceGeolocation]);
 
   // Handle tour popup when transition from the loading screen completes
   useEffect(() => {
@@ -152,15 +320,15 @@ export default function App() {
   // Notification helper (no-op: black feed pop-ups completely removed)
   const showNotification = (_message?: string, _type?: 'info' | 'success' | 'ping', _friendName?: string) => {};
 
-  // Onboarding first-time connection check
+  // Onboarding first-time connection check (only after Firestore settings check finishes)
   useEffect(() => {
-    if (hasLoaded && isMapLoaded && user) {
+    if (hasLoaded && isMapLoaded && user && isProfileChecked) {
       const completed = safeStorage.getItem('gloko_onboarding_completed');
       if (completed !== 'true') {
         setShowOnboarding(true);
       }
     }
-  }, [hasLoaded, isMapLoaded, user]);
+  }, [hasLoaded, isMapLoaded, user, isProfileChecked]);
 
   // Listen to live system pings from other users (authenticated mode only)
   useEffect(() => {
@@ -285,6 +453,36 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  // Update user's profile photo (used by default when friends add them via QR code)
+  const handleUpdateProfilePhoto = async (newPhotoUrl: string) => {
+    const resolved = newPhotoUrl ? String(newPhotoUrl).slice(0, 524288) : (user?.photoURL || '');
+    setUserPhotoUrl(resolved);
+    if (user) {
+      if (newPhotoUrl) {
+        safeStorage.setItem(`gloko_user_photo_url_${user.uid}`, resolved);
+      } else {
+        safeStorage.removeItem(`gloko_user_photo_url_${user.uid}`);
+      }
+      const nowIso = new Date().toISOString();
+      try {
+        await setDoc(
+          doc(db, 'users', user.uid, 'settings', 'profile'),
+          {
+            homeCountryId: userHomeCountryIdRef.current,
+            liveCountryId: userLiveCountryIdRef.current,
+            geolocationEnabled: geolocationEnabledRef.current,
+            photoUrl: resolved,
+            updatedAt: nowIso,
+          },
+          { merge: true }
+        );
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}/settings/profile`);
+      }
+      await publishPublicProfile(user.uid, resolved);
+    }
+  };
+
   // Finish onboarding handler
   const handleOnboardingComplete = async (countryId: string, enableGeolocation: boolean, liveCountryId: string) => {
     safeStorage.setItem('gloko_onboarding_completed', 'true');
@@ -297,15 +495,26 @@ export default function App() {
     setShowOnboarding(false);
 
     if (user) {
+      lastGpsRefreshTimeRef.current = Date.now();
+      const currentPhoto = userPhotoUrlRef.current || user.photoURL || '';
       try {
-        await setDoc(doc(db, 'users', user.uid, 'settings', 'profile'), {
-          homeCountryId: countryId,
-          liveCountryId: liveCountryId,
-          geolocationEnabled: enableGeolocation,
-          updatedAt: new Date().toISOString()
-        });
+        await setDoc(
+          doc(db, 'users', user.uid, 'settings', 'profile'),
+          {
+            homeCountryId: countryId,
+            liveCountryId: liveCountryId,
+            geolocationEnabled: enableGeolocation,
+            ...(currentPhoto ? { photoUrl: currentPhoto } : {}),
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
       } catch (e) {
         handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}/settings/profile`);
+      }
+      await publishLiveLocation(user.uid, enableGeolocation ? liveCountryId : countryId, enableGeolocation);
+      if (currentPhoto) {
+        await publishPublicProfile(user.uid, currentPhoto);
       }
     }
 
@@ -329,6 +538,10 @@ export default function App() {
         }, { merge: true });
       } catch (e) {
         handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}/settings/profile`);
+      }
+      await publishLiveLocation(user.uid, enabled ? userLiveCountryId : userHomeCountryId, enabled);
+      if (enabled) {
+        refreshDeviceGeolocation(true, false);
       }
     }
   };
@@ -381,6 +594,7 @@ export default function App() {
     geolocationEnabled?: boolean;
     liveCountryId?: string;
     friendUserId?: string;
+    photoUrl?: string;
   }) => {
     // Record as recently added friend to prevent any false deletion popup
     recentlyAddedFriendNamesRef.current.add(friendData.name.trim().toLowerCase());
@@ -392,6 +606,22 @@ export default function App() {
     const liveId = String(friendData.liveCountryId || origId).padStart(3, '0');
     const country = COUNTRY_LIST.find(c => c.id === origId);
 
+    // Resolve default profile photo from friend's public profile if not already attached
+    let resolvedPhotoUrl = friendData.photoUrl || '';
+    if (!resolvedPhotoUrl && user && isValidFirestoreId(friendData.friendUserId)) {
+      try {
+        const profileSnap = await getDoc(doc(db, 'public_profiles', friendData.friendUserId));
+        if (profileSnap.exists()) {
+          const data = profileSnap.data();
+          if (data?.photoUrl) {
+            resolvedPhotoUrl = String(data.photoUrl);
+          }
+        }
+      } catch (e) {
+        handleFirestoreError(e, OperationType.GET, `public_profiles/${friendData.friendUserId}`);
+      }
+    }
+
     await handleAddContact({
       name: friendData.name,
       countryId: origId, // Pin permanently to original country!
@@ -401,6 +631,7 @@ export default function App() {
       liveCountryId: liveId,
       geolocationEnabled: friendData.geolocationEnabled !== undefined ? friendData.geolocationEnabled : true,
       friendUserId: friendData.friendUserId || '',
+      photoUrl: resolvedPhotoUrl || undefined,
       city: '', // Card created without a city when added via QR code
       contactInfo: friendData.contact || '',
       notes: friendData.notes || 'Added via GLOKO QR Share Code',
@@ -411,6 +642,21 @@ export default function App() {
   // Handle mutual Add-Back from incoming friend activity pop-up
   const handleAddBackFriend = async (activity: FriendActivityInfo) => {
     const country = COUNTRY_LIST.find((c) => c.id === activity.countryId);
+    let resolvedPhotoUrl = '';
+    if (user && isValidFirestoreId(activity.friendUserId)) {
+      try {
+        const profileSnap = await getDoc(doc(db, 'public_profiles', activity.friendUserId));
+        if (profileSnap.exists()) {
+          const data = profileSnap.data();
+          if (data?.photoUrl) {
+            resolvedPhotoUrl = String(data.photoUrl);
+          }
+        }
+      } catch (e) {
+        handleFirestoreError(e, OperationType.GET, `public_profiles/${activity.friendUserId}`);
+      }
+    }
+
     await handleAddContact({
       name: activity.friendName,
       countryId: activity.countryId,
@@ -418,6 +664,7 @@ export default function App() {
       city: activity.city || '',
       contactInfo: activity.contactInfo || '',
       friendUserId: activity.friendUserId || '',
+      photoUrl: resolvedPhotoUrl || undefined,
       notes: activity.notes || 'Added back via GLOKO mutual friend link',
     });
     showNotification(`🤝 Added ${activity.friendName} back to your travel book!`, 'success');
@@ -603,11 +850,17 @@ export default function App() {
     const unsubscribeSettings = onSnapshot(settingsDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+        safeStorage.setItem('gloko_onboarding_completed', 'true');
+        setShowOnboarding(false);
+        setIsProfileChecked(true);
+
         if (data.homeCountryId) {
           setUserHomeCountryId(data.homeCountryId);
           safeStorage.setItem('gloko_user_country_id', data.homeCountryId);
         }
-        if (data.liveCountryId) {
+        // Prevent a stale cached snapshot from overwriting a fresher GPS fix obtained during this session
+        const hasRecentGpsFix = Date.now() - lastGpsRefreshTimeRef.current < 15000;
+        if (data.liveCountryId && !hasRecentGpsFix) {
           setUserLiveCountryId(data.liveCountryId);
           safeStorage.setItem('gloko_user_live_country_id', data.liveCountryId);
         }
@@ -615,8 +868,36 @@ export default function App() {
           setGeolocationEnabled(data.geolocationEnabled);
           safeStorage.setItem('gloko_geolocation_enabled', String(data.geolocationEnabled));
         }
+
+        const effectivePhoto = data.photoUrl || safeStorage.getItem(`gloko_user_photo_url_${user.uid}`) || user.photoURL || '';
+        setUserPhotoUrl(effectivePhoto);
+        if (data.photoUrl) {
+          safeStorage.setItem(`gloko_user_photo_url_${user.uid}`, data.photoUrl);
+        }
+
+        if (!hasPublishedInitialProfileRef.current && effectivePhoto) {
+          hasPublishedInitialProfileRef.current = true;
+          publishPublicProfile(user.uid, effectivePhoto);
+        }
+
+        if (!hasPublishedInitialLiveRef.current) {
+          hasPublishedInitialLiveRef.current = true;
+          const resolvedLive = hasRecentGpsFix
+            ? userLiveCountryIdRef.current
+            : (data.liveCountryId || data.homeCountryId || userHomeCountryIdRef.current);
+          const resolvedEnabled = Boolean(data.geolocationEnabled);
+          publishLiveLocation(user.uid, resolvedEnabled ? resolvedLive : (data.homeCountryId || resolvedLive), resolvedEnabled);
+        }
+      } else {
+        setIsProfileChecked(true);
+        const fallbackPhoto = safeStorage.getItem(`gloko_user_photo_url_${user.uid}`) || user.photoURL || '';
+        if (!hasPublishedInitialProfileRef.current && fallbackPhoto) {
+          hasPublishedInitialProfileRef.current = true;
+          publishPublicProfile(user.uid, fallbackPhoto);
+        }
       }
     }, (error) => {
+      setIsProfileChecked(true);
       handleFirestoreError(error, OperationType.GET, `users/${user.uid}/settings/profile`);
     });
 
@@ -625,7 +906,54 @@ export default function App() {
       unsubscribeColors();
       unsubscribeSettings();
     };
-  }, [user, isAuthLoading]);
+  }, [user, isAuthLoading, publishLiveLocation, publishPublicProfile]);
+
+  // Subscribe to real-time live locations for contacts linked to GLOKO user accounts
+  const friendIdsKey = useMemo(() => {
+    const ids = Array.from(
+      new Set(
+        contacts
+          .map((c) => c.friendUserId)
+          .filter((id): id is string => Boolean(id && id !== user?.uid && isValidFirestoreId(id)))
+      )
+    ).sort();
+    return ids.join(',');
+  }, [contacts, user?.uid]);
+
+  useEffect(() => {
+    if (!user || !friendIdsKey) {
+      setFriendLiveLocations({});
+      return;
+    }
+
+    const friendIds = friendIdsKey.split(',').filter(Boolean);
+    const unsubscribes = friendIds.map((fid) =>
+      onSnapshot(
+        doc(db, 'live_locations', fid),
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data && data.liveCountryId !== undefined) {
+              setFriendLiveLocations((prev) => ({
+                ...prev,
+                [fid]: {
+                  liveCountryId: String(data.liveCountryId).padStart(3, '0'),
+                  geolocationEnabled: Boolean(data.geolocationEnabled),
+                },
+              }));
+            }
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, `live_locations/${fid}`);
+        }
+      )
+    );
+
+    return () => {
+      unsubscribes.forEach((unsub) => unsub());
+    };
+  }, [user, friendIdsKey]);
 
   // Auth Action handlers
   const handleLogin = async () => {
@@ -787,8 +1115,25 @@ export default function App() {
 
   // Update Contact
   const handleUpdateContact = async (updatedContact: Contact) => {
+    const existing = contacts.find((c) => c.id === updatedContact.id);
+    const permanentCountryId = String(
+      existing?.originalCountryId || existing?.homeCountryId || existing?.countryId || updatedContact.countryId || '840'
+    ).padStart(3, '0');
+    const permanentCountryName = getCountryInfo(permanentCountryId)?.name || existing?.countryName || updatedContact.countryName;
+
+    const mergedUpdated: Contact = {
+      ...existing,
+      ...updatedContact,
+      countryId: permanentCountryId,
+      countryName: permanentCountryName,
+      homeCountryId: String(updatedContact.homeCountryId || existing?.homeCountryId || permanentCountryId).padStart(3, '0'),
+      originalCountryId: existing?.originalCountryId || updatedContact.originalCountryId || permanentCountryId,
+      liveCountryId: String(updatedContact.liveCountryId || existing?.liveCountryId || permanentCountryId).padStart(3, '0'),
+      friendUserId: updatedContact.friendUserId || existing?.friendUserId,
+    };
+
     if (user) {
-      const contactWithUser = { ...updatedContact, userId: user.uid };
+      const contactWithUser = { ...mergedUpdated, userId: user.uid };
       const cleanContact = JSON.parse(JSON.stringify(contactWithUser));
       try {
         await setDoc(doc(db, 'contacts', updatedContact.id), cleanContact);
@@ -796,7 +1141,7 @@ export default function App() {
         handleFirestoreError(e, OperationType.WRITE, `contacts/${updatedContact.id}`);
       }
     } else {
-      const updated = contacts.map((c) => (c.id === updatedContact.id ? updatedContact : c));
+      const updated = contacts.map((c) => (c.id === updatedContact.id ? mergedUpdated : c));
       saveAndSyncContacts(updated);
     }
   };
@@ -1004,19 +1349,42 @@ export default function App() {
     });
   };
 
-  // Helper to resolve a contact's display country in fixed mode
+  // Merge live location updates from linked friends' real-time /live_locations documents
+  const mergedContacts = useMemo(() => {
+    return contacts.map((c) => {
+      const liveOverride = c.friendUserId ? friendLiveLocations[c.friendUserId] : undefined;
+      if (!liveOverride) return c;
+      return {
+        ...c,
+        liveCountryId: liveOverride.liveCountryId,
+        geolocationEnabled: liveOverride.geolocationEnabled,
+      };
+    });
+  }, [contacts, friendLiveLocations]);
+
+  // Resolve contact's display country: live location in Live Mode, home/original country in Normal Mode
   const getDisplayCountryId = (contact: Contact): string => {
-    if (contact.homeCountryId) {
-      return contact.homeCountryId;
+    if (isLiveMode) {
+      if (contact.geolocationEnabled) {
+        return String(contact.liveCountryId || contact.homeCountryId || contact.countryId).padStart(3, '0');
+      }
+      return String(contact.homeCountryId || contact.countryId).padStart(3, '0');
     }
-    return contact.countryId;
+    return String(contact.homeCountryId || contact.originalCountryId || contact.countryId).padStart(3, '0');
   };
 
-  const displayedContacts = contacts.map(c => ({
-    ...c,
-    countryId: getDisplayCountryId(c),
-    city: c.city,
-  }));
+  const displayedContacts = useMemo(() => {
+    return mergedContacts.map((c) => {
+      const resolvedCountryId = getDisplayCountryId(c);
+      const resolvedInfo = getCountryInfo(resolvedCountryId);
+      return {
+        ...c,
+        countryId: resolvedCountryId,
+        countryName: resolvedInfo?.name || c.countryName,
+        city: c.city,
+      };
+    });
+  }, [mergedContacts, isLiveMode]);
 
   // Set of unique countries visited for metrics display
   const visitedCount = new Set(
@@ -1041,7 +1409,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen w-screen bg-[#d4e5f7] relative overflow-hidden antialiased text-slate-800 font-sans">
+    <div className="h-dvh w-screen bg-[#d4e5f7] relative overflow-hidden overscroll-none antialiased text-slate-800 font-sans">
       
       {/* Immersive Map Background Layer */}
       <div className={`absolute inset-0 w-full h-full z-0 ${selectedCountryId ? 'pointer-events-none' : ''}`}>
@@ -1118,6 +1486,8 @@ export default function App() {
         geolocationEnabled={geolocationEnabled}
         onToggleGeolocation={handleToggleGeolocation}
         onOpenProfileSetup={() => setShowOnboarding(true)}
+        userPhotoUrl={userPhotoUrl}
+        onUpdateProfilePhoto={handleUpdateProfilePhoto}
       />
 
       {/* Interactive Guide Tour Slides Deck Walkthrough Modal */}
@@ -1262,6 +1632,7 @@ export default function App() {
             homeCountryId={userHomeCountryId}
             liveCountryId={userLiveCountryId}
             userGeolocationEnabled={geolocationEnabled}
+            userPhotoUrl={userPhotoUrl}
             onAddFriendFromQR={handleAddFriendFromQR}
           />
         )}

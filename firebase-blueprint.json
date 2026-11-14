@@ -36,6 +36,7 @@
       "properties": {
         "homeCountryId": { "type": "string" },
         "geolocationEnabled": { "type": "boolean" },
+        "photoUrl": { "type": "string", "maxLength": 524288 },
         "updatedAt": { "type": "string" }
       },
       "required": ["homeCountryId", "geolocationEnabled", "updatedAt"]
@@ -54,6 +55,29 @@
         "status": { "type": "string", "enum": ["unread", "read"] }
       },
       "required": ["id", "fromUserId", "fromUserName", "toContactName", "toContactId", "createdAt", "status"]
+    },
+    "LiveLocation": {
+      "title": "LiveLocation",
+      "description": "Non-PII real-time live country status for Live Mode friend discovery",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "liveCountryId": { "type": "string", "maxLength": 10 },
+        "geolocationEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["userId", "liveCountryId", "geolocationEnabled", "updatedAt"]
+    },
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Non-PII public avatar photo per user for QR friend additions",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "photoUrl": { "type": "string", "maxLength": 524288 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["userId", "photoUrl", "updatedAt"]
     }
   },
   "firestore": {
@@ -72,6 +96,14 @@
     "/pings/{pingId}": {
       "schema": "Ping",
       "description": "Store live pings between users and friends"
+    },
+    "/live_locations/{userId}": {
+      "schema": "LiveLocation",
+      "description": "Store real-time live country ID and sharing toggle per user"
+    },
+    "/public_profiles/{userId}": {
+      "schema": "PublicProfile",
+      "description": "Store user profile picture for default QR friend card creation"
     }
   }
 }

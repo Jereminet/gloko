@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Download, Trash2, LogOut, Settings, ShieldAlert, Globe, ArrowRight, Sparkles, QrCode, UserPlus, UserMinus, Navigation } from 'lucide-react';
+import { X, Download, Trash2, LogOut, Settings, ShieldAlert, Globe, ArrowRight, Sparkles, QrCode, UserPlus, UserMinus, Navigation, Camera } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { Contact } from '../types';
 import { AppLanguage, TRANSLATIONS } from '../utils/translations';
 import { getCountryInfo } from '../data/countries';
+import { resizeImage } from '../utils/image';
 
 interface SettingsDrawerProps {
   isOpen: boolean;
@@ -27,6 +28,8 @@ interface SettingsDrawerProps {
   geolocationEnabled?: boolean;
   onToggleGeolocation?: (enabled: boolean) => void;
   onOpenProfileSetup?: () => void;
+  userPhotoUrl?: string;
+  onUpdateProfilePhoto?: (photoUrl: string) => Promise<void> | void;
 }
 
 export default function SettingsDrawer({
@@ -50,8 +53,30 @@ export default function SettingsDrawer({
   geolocationEnabled,
   onToggleGeolocation,
   onOpenProfileSetup,
+  userPhotoUrl,
+  onUpdateProfilePhoto,
 }: SettingsDrawerProps) {
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
+  const profileFileInputRef = useRef<HTMLInputElement>(null);
+  const [isUpdatingPhoto, setIsUpdatingPhoto] = useState(false);
+
+  const effectivePhotoUrl = userPhotoUrl || user?.photoURL || '';
+
+  const handleProfilePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !onUpdateProfilePhoto) return;
+    if (!file.type.match(/image\/*/)) return;
+    setIsUpdatingPhoto(true);
+    try {
+      const resized = await resizeImage(file, 1080);
+      await onUpdateProfilePhoto(resized);
+    } catch (err) {
+      console.error('Failed to process profile image:', err);
+    } finally {
+      setIsUpdatingPhoto(false);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -112,20 +137,45 @@ export default function SettingsDrawer({
                   </div>
                 ) : user ? (
                   <div className="bg-slate-50/50 border border-slate-100 rounded-2xl p-4 flex flex-col gap-3.5">
-                    {/* User Identity Info */}
+                    {/* User Identity Info with Editable Profile Picture */}
                     <div className="flex items-center gap-3">
-                      {user.photoURL ? (
-                        <img
-                          src={user.photoURL}
-                          alt="User profile"
-                          className="w-11 h-11 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-200/50"
-                          referrerPolicy="no-referrer"
+                      <div className="relative shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => profileFileInputRef.current?.click()}
+                          disabled={isUpdatingPhoto || !onUpdateProfilePhoto}
+                          className="relative group block rounded-full cursor-pointer focus:outline-none"
+                          title="Edit profile picture"
+                        >
+                          {effectivePhotoUrl ? (
+                            <img
+                              src={effectivePhotoUrl}
+                              alt="User profile"
+                              className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm ring-1 ring-slate-200/70 group-hover:brightness-90 transition-all"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-750 font-extrabold flex items-center justify-center text-base shadow-sm border border-indigo-200/20 group-hover:bg-indigo-200/80 transition-colors">
+                              {(user.displayName || 'T').charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-indigo-600 text-white border-2 border-white shadow flex items-center justify-center">
+                            {isUpdatingPhoto ? (
+                              <span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <Camera className="w-2.5 h-2.5" />
+                            )}
+                          </span>
+                        </button>
+                        <input
+                          ref={profileFileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleProfilePhotoChange}
+                          className="hidden"
                         />
-                      ) : (
-                        <div className="w-11 h-11 rounded-full bg-indigo-100 text-indigo-750 font-extrabold flex items-center justify-center text-base shadow-sm border border-indigo-200/20">
-                          {(user.displayName || 'T').charAt(0).toUpperCase()}
-                        </div>
-                      )}
+                      </div>
+
                       <div className="min-w-0 flex-1">
                         <div className="text-xs font-bold text-slate-900 truncate">
                           {user.displayName || 'Traveler'}
@@ -133,6 +183,18 @@ export default function SettingsDrawer({
                         {user.email && (
                           <div className="text-[10px] text-slate-400 truncate mt-0.5 font-bold">
                             {user.email}
+                          </div>
+                        )}
+                        {onUpdateProfilePhoto && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <button
+                              type="button"
+                              onClick={() => profileFileInputRef.current?.click()}
+                              disabled={isUpdatingPhoto}
+                              className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                            >
+                              {isUpdatingPhoto ? 'Updating...' : 'Edit photo'}
+                            </button>
                           </div>
                         )}
                       </div>

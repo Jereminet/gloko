@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Compass, Navigation, Globe, Search, Check, ShieldCheck } from 'lucide-react';
 import { COUNTRY_LIST } from '../data/countries';
-import { getLiveCountryFromDeviceGPS } from '../utils/geolocation';
+import { getLiveCountryFromDeviceGPS, getGeolocationPermissionState } from '../utils/geolocation';
+import { safeStorage } from '../utils/storage';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -38,18 +39,33 @@ export default function OnboardingModal({
   const selectedHomeCountry = COUNTRY_LIST.find((c) => c.id === selectedHomeCountryId) || COUNTRY_LIST[0];
   const detectedLiveCountry = COUNTRY_LIST.find((c) => c.id === detectedLiveCountryId) || selectedHomeCountry;
 
-  // Auto-detect GPS when geolocation is enabled
+  // Auto-detect GPS when geolocation is enabled: run silently if already granted, or prompt during initial onboarding
   useEffect(() => {
-    if (enableGeolocation && isOpen) {
-      handleDetectGPS();
-    }
+    if (!enableGeolocation || !isOpen) return;
+    let cancelled = false;
+    (async () => {
+      const onboardingCompleted = safeStorage.getItem('gloko_onboarding_completed') === 'true';
+      if (onboardingCompleted) {
+        const permState = await getGeolocationPermissionState();
+        const grantedFlag = safeStorage.getItem('gloko_geo_permission_granted') === 'true';
+        if (permState === 'denied' || permState === 'prompt' || (permState === 'unknown' && !grantedFlag)) {
+          return;
+        }
+      }
+      if (!cancelled) {
+        handleDetectGPS();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [enableGeolocation, isOpen]);
 
   const handleDetectGPS = async () => {
     setIsDetectingGPS(true);
     setGpsStatus('Requesting device GPS location...');
     try {
-      const result = await getLiveCountryFromDeviceGPS();
+      const result = await getLiveCountryFromDeviceGPS(true);
       if (result) {
         setDetectedLiveCountryId(result.countryId);
         setGpsStatus(`📍 GPS Position: ${result.flag} ${result.countryName}${result.city ? ` (${result.city})` : ''}`);

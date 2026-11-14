@@ -34,7 +34,7 @@ export default function PhotoModal({
       onClick={onClose}
     >
       <div
-        className="relative max-w-lg sm:max-w-2xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl border border-slate-200/60 flex flex-col animate-in zoom-in-95 duration-200"
+        className="relative max-w-xl sm:max-w-3xl max-h-[92vh] bg-white rounded-2xl overflow-hidden shadow-2xl border border-slate-200/60 flex flex-col animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header bar */}
@@ -52,11 +52,11 @@ export default function PhotoModal({
         </div>
 
         {/* Photo Container */}
-        <div className="p-3 sm:p-4 bg-slate-900/5 flex items-center justify-center overflow-auto max-h-[75vh]">
+        <div className="p-3 sm:p-4 bg-slate-900/5 flex items-center justify-center overflow-auto max-h-[80vh]">
           <img
             src={photoUrl}
             alt={friendName || 'Friend photo'}
-            className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-sm"
+            className="max-w-full max-h-[76vh] object-contain rounded-xl shadow-sm"
           />
         </div>
       </div>

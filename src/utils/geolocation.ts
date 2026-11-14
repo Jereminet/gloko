@@ -1,5 +1,6 @@
 import { COUNTRY_LIST, CountryInfo } from '../data/countries';
 import { BIGGEST_CITIES_BY_COUNTRY } from '../data/cities';
+import { safeStorage } from './storage';
 
 export interface GeolocationResult {
   countryId: string;
@@ -89,9 +90,29 @@ export async function detectCountryFromCoordinates(lat: number, lon: number): Pr
 }
 
 /**
+ * Check browser geolocation permission state without triggering a prompt
+ */
+export async function getGeolocationPermissionState(): Promise<'granted' | 'prompt' | 'denied' | 'unknown'> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.permissions && typeof navigator.permissions.query === 'function') {
+      const status = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+      if (status.state === 'granted') {
+        safeStorage.setItem('gloko_geo_permission_granted', 'true');
+      } else if (status.state === 'denied') {
+        safeStorage.removeItem('gloko_geo_permission_granted');
+      }
+      return status.state;
+    }
+  } catch {
+    // Permissions API not supported on this platform
+  }
+  return 'unknown';
+}
+
+/**
  * Request device GPS coordinates via HTML5 Geolocation API
  */
-export function requestCoordinates(): Promise<{ lat: number; lon: number } | null> {
+export function requestCoordinates(forceFresh: boolean = false): Promise<{ lat: number; lon: number } | null> {
   return new Promise((resolve) => {
     if (!navigator.geolocation || typeof navigator.geolocation.getCurrentPosition !== 'function') {
       resolve(null);
@@ -100,18 +121,22 @@ export function requestCoordinates(): Promise<{ lat: number; lon: number } | nul
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        safeStorage.setItem('gloko_geo_permission_granted', 'true');
         resolve({
           lat: pos.coords.latitude,
           lon: pos.coords.longitude,
         });
       },
-      () => {
+      (err) => {
+        if (err && err.code === err.PERMISSION_DENIED) {
+          safeStorage.removeItem('gloko_geo_permission_granted');
+        }
         resolve(null);
       },
       {
         enableHighAccuracy: true,
-        timeout: 8000,
-        maximumAge: 60000,
+        timeout: 10000,
+        maximumAge: forceFresh ? 0 : 60000,
       }
     );
   });
@@ -120,8 +145,8 @@ export function requestCoordinates(): Promise<{ lat: number; lon: number } | nul
 /**
  * Convenience helper to get live country from device GPS
  */
-export async function getLiveCountryFromDeviceGPS(): Promise<GeolocationResult | null> {
-  const coords = await requestCoordinates();
+export async function getLiveCountryFromDeviceGPS(forceFresh: boolean = false): Promise<GeolocationResult | null> {
+  const coords = await requestCoordinates(forceFresh);
   if (!coords) return null;
   return detectCountryFromCoordinates(coords.lat, coords.lon);
 }
